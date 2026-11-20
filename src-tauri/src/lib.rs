@@ -2,7 +2,7 @@ mod commands;
 mod config;
 mod error;
 
-use commands::{fs, git, process};
+use commands::{android, fs, git, process, sdk};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +19,9 @@ pub fn run() {
             git::git_branch,
             git::git_status,
             git::git_log,
+            sdk::find_sdk,
+            android::list_devices,
+            android::start_avd,
             process::stop_task,
         ])
         .run(tauri::generate_context!())

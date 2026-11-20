@@ -7,6 +7,7 @@ import FileTree from './components/FileTree.vue';
 import GitGraph from './components/GitGraph.vue';
 import Splitter from './components/Splitter.vue';
 import ToastHost from './components/ToastHost.vue';
+import { useDevicesStore } from './stores/devices';
 import { useGitStore } from './stores/git';
 import { useProjectStore } from './stores/project';
 import { useToastsStore } from './stores/toasts';
@@ -17,6 +18,7 @@ const project = useProjectStore();
 const tree = useTreeStore();
 const git = useGitStore();
 const toasts = useToastsStore();
+const devices = useDevicesStore();
 
 // --- data refresh -----------------------------------------------------------
 // No timers: data is reloaded when a project opens, when the window regains focus,
@@ -31,6 +33,8 @@ watch(
     tree.reset();
     git.reset();
     void refreshProjectData();
+    // sdk.dir in local.properties may point at a different SDK for this project.
+    void devices.refresh();
   },
 );
 
@@ -41,6 +45,7 @@ function onWindowFocus() {
   if (now - lastFocusRefresh < FOCUS_REFRESH_MIN_INTERVAL_MS) return;
   lastFocusRefresh = now;
   void refreshProjectData();
+  void devices.refresh();
 }
 let unlistenFocus: (() => void) | null = null;
 
@@ -90,7 +95,10 @@ onMounted(async () => {
   } catch (e) {
     toasts.error(e, 'Подписка на фокус окна');
   }
+  await devices.restore();
   await project.restore();
+  // Opening a project refreshes devices itself; cover the "no project yet" start.
+  if (!project.info) void devices.refresh();
 });
 
 onBeforeUnmount(() => unlistenFocus?.());

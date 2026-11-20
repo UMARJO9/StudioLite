@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { FolderOpen, GitBranch } from 'lucide-vue-next';
 import { useGitStore } from '../stores/git';
+import DeviceSelector from './DeviceSelector.vue';
 import { useProjectStore } from '../stores/project';
 
 const project = useProjectStore();
@@ -25,6 +26,8 @@ const git = useGitStore();
       <GitBranch :size="14" />
       <span class="ellipsis">{{ git.branch }}</span>
     </span>
+    <div class="divider" />
+    <DeviceSelector />
     <div class="spacer" />
   </header>
 </template>
@@ -60,7 +63,7 @@ const git = useGitStore();
 .spacer {
   flex: 1;
 }
-.toolbar :deep(.divider) {
+.divider {
   width: 1px;
   height: 20px;
   background: var(--border);

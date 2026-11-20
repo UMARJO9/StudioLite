@@ -112,3 +112,9 @@ export interface ChatRunResult {
   cancelled: boolean;
   durationMs: number;
 }
+
+/** A picture attached to a chat message; `data` is base64 without the data-URL prefix. */
+export interface ChatImage {
+  mediaType: string;
+  data: string;
+}

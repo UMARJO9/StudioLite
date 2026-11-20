@@ -111,6 +111,67 @@ fn is_valid_model(model: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "._-:[]".contains(c))
 }
 
+/// A picture attached to a message, already base64-encoded by the frontend.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatImage {
+    pub media_type: String,
+    pub data: String,
+}
+
+const MAX_IMAGES: usize = 10;
+/// Base64 length; about 7.5 MB of image data.
+const MAX_IMAGE_BASE64_LEN: usize = 10 * 1024 * 1024;
+const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+fn validate_images(images: &[ChatImage]) -> AppResult<()> {
+    if images.len() > MAX_IMAGES {
+        return Err(AppError::InvalidArgument(format!(
+            "не больше {MAX_IMAGES} изображений в одном сообщении"
+        )));
+    }
+    for image in images {
+        if !IMAGE_TYPES.contains(&image.media_type.as_str()) {
+            return Err(AppError::InvalidArgument(format!(
+                "формат изображения «{}» не поддерживается",
+                image.media_type
+            )));
+        }
+        let is_base64 = image
+            .data
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='));
+        if image.data.is_empty() || !is_base64 {
+            return Err(AppError::InvalidArgument("повреждённое изображение".into()));
+        }
+        if image.data.len() > MAX_IMAGE_BASE64_LEN {
+            return Err(AppError::InvalidArgument("изображение слишком большое".into()));
+        }
+    }
+    Ok(())
+}
+
+/// One user message in the CLI's JSON input format: text plus image blocks.
+fn message_with_images(prompt: &str, images: &[ChatImage]) -> Vec<u8> {
+    let mut content = Vec::new();
+    if !prompt.trim().is_empty() {
+        content.push(serde_json::json!({ "type": "text", "text": prompt }));
+    }
+    for image in images {
+        content.push(serde_json::json!({
+            "type": "image",
+            "source": { "type": "base64", "media_type": image.media_type, "data": image.data },
+        }));
+    }
+    let message = serde_json::json!({
+        "type": "user",
+        "message": { "role": "user", "content": content },
+    });
+    let mut line = message.to_string().into_bytes();
+    line.push(b'\n');
+    line
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRunResult {
@@ -213,6 +274,7 @@ pub async fn chat_send(
     chat_id: String,
     command: String,
     prompt: String,
+    images: Option<Vec<ChatImage>>,
     session_id: Option<String>,
     access: ChatAccess,
     model: Option<String>,
@@ -222,7 +284,9 @@ pub async fn chat_send(
 ) -> AppResult<ChatRunResult> {
     let project = project_dir(&project)?;
     let program = resolve_cli(&command)?;
-    if prompt.trim().is_empty() {
+    let images = images.unwrap_or_default();
+    validate_images(&images)?;
+    if prompt.trim().is_empty() && images.is_empty() {
         return Err(AppError::InvalidArgument("пустое сообщение".into()));
     }
 
@@ -254,6 +318,13 @@ pub async fn chat_send(
         }
         cmd.args(["--resume", session]);
     }
+    // Plain text goes to stdin as is; pictures need the structured input format.
+    let input = if images.is_empty() {
+        prompt.into_bytes()
+    } else {
+        cmd.args(["--input-format", "stream-json"]);
+        message_with_images(&prompt, &images)
+    };
     // The agent runs git, node and friends itself and needs the same PATH we searched.
     if let Ok(path) = std::env::join_paths(search_dirs()) {
         cmd.env("PATH", path);
@@ -268,7 +339,7 @@ pub async fn chat_send(
         &program.to_string_lossy(),
         &running.handle,
         &out,
-        Some(prompt.into_bytes()),
+        Some(input),
     )
     .await;
     drop(out);
@@ -365,6 +436,42 @@ mod tests {
         let log = events.lock().unwrap().join("\n");
         assert!(log.contains("--not-a-flag"), "{log}");
         assert!(log.contains(r#"{\"type\":\"result\"}"#), "{log}");
+    }
+
+    #[test]
+    fn builds_a_message_with_text_and_images() {
+        let images = vec![ChatImage {
+            media_type: "image/png".into(),
+            data: "aGVsbG8=".into(),
+        }];
+        let line = String::from_utf8(message_with_images("что тут?", &images)).unwrap();
+        assert!(line.ends_with('\n'));
+        let json: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(json["type"], "user");
+        let content = json["message"]["content"].as_array().unwrap();
+        assert_eq!(content[0]["text"], "что тут?");
+        assert_eq!(content[1]["type"], "image");
+        assert_eq!(content[1]["source"]["media_type"], "image/png");
+        assert_eq!(content[1]["source"]["data"], "aGVsbG8=");
+
+        // An image alone is a valid message: no empty text block is added.
+        let only_image: serde_json::Value =
+            serde_json::from_slice(&message_with_images("  ", &images)).unwrap();
+        assert_eq!(only_image["message"]["content"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn rejects_bad_images() {
+        let image = |media_type: &str, data: &str| ChatImage {
+            media_type: media_type.into(),
+            data: data.into(),
+        };
+        assert!(validate_images(&[image("image/png", "aGVsbG8=")]).is_ok());
+        assert!(validate_images(&[image("image/svg+xml", "aGVsbG8=")]).is_err());
+        assert!(validate_images(&[image("image/png", "not base64!")]).is_err());
+        assert!(validate_images(&[image("image/png", "")]).is_err());
+        let many: Vec<ChatImage> = (0..11).map(|_| image("image/png", "aGVsbG8=")).collect();
+        assert!(validate_images(&many).is_err());
     }
 
     #[test]

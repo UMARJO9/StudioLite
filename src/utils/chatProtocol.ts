@@ -8,6 +8,8 @@ export interface ChatItemData {
   text: string;
   /** Tool name, for `kind: 'tool'`. */
   tool?: string;
+  /** Small previews (data URLs) of the pictures sent with a user message. */
+  images?: string[];
 }
 
 export type ChatUpdate =

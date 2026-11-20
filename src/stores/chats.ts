@@ -2,6 +2,7 @@ import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import { LazyStore } from '@tauri-apps/plugin-store';
 import { api, type ChatAccess, type ChatEffort, type TaskEvent } from '../api';
+import type { PreparedImage } from '../utils/images';
 import { interpretChatLine, type ChatItemData, type ChatUpdate } from '../utils/chatProtocol';
 import { errorMessage } from '../utils/errors';
 import { loadSetting, saveSetting, type ChatModel } from '../utils/persist';
@@ -226,11 +227,11 @@ export const useChatsStore = defineStore('chats', () => {
     chat.updatedAt = Date.now();
   }
 
-  async function send(id: string, text: string): Promise<void> {
+  async function send(id: string, text: string, images: PreparedImage[] = []): Promise<void> {
     const chat = chats.value.find((c) => c.id === id);
     const projectPath = project.path;
     const prompt = text.trim();
-    if (!chat || !projectPath || !prompt) return;
+    if (!chat || !projectPath || (!prompt && !images.length)) return;
     const rt = runtimeOf(id);
     if (rt.running) return;
     if (!isConfigured.value) {
@@ -239,13 +240,18 @@ export const useChatsStore = defineStore('chats', () => {
     }
 
     if (chat.items.length === 0) {
-      const firstLine = prompt.split('\n')[0];
+      const firstLine = prompt.split('\n')[0] || 'Изображение';
       chat.title =
         firstLine.length > MAX_TITLE_LENGTH
           ? firstLine.slice(0, MAX_TITLE_LENGTH - 1) + '…'
           : firstLine;
     }
-    addItem(chat, { kind: 'user', text: prompt });
+    addItem(chat, {
+      kind: 'user',
+      text: prompt,
+      // Only the small previews are kept in the history, not the full pictures.
+      ...(images.length ? { images: images.map((image) => image.preview) } : {}),
+    });
     rt.running = true;
     rt.stopping = false;
     rt.streaming = '';
@@ -288,6 +294,7 @@ export const useChatsStore = defineStore('chats', () => {
           chatId: id,
           command: command.value,
           prompt,
+          images: images.map(({ mediaType, data }) => ({ mediaType, data })),
           sessionId: chat.sessionId,
           access: chat.access,
           model: chat.model,

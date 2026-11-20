@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { ArrowUp, LoaderCircle, Square, Wrench } from 'lucide-vue-next';
+import { ArrowUp, LoaderCircle, Paperclip, Square, Wrench, X } from 'lucide-vue-next';
 import { useChatsStore, type Chat } from '../stores/chats';
+import { useToastsStore } from '../stores/toasts';
+import { imageFilesFrom, prepareImage, type PreparedImage } from '../utils/images';
 import { renderMarkdown } from '../utils/markdown';
 import ChatOptions from './ChatOptions.vue';
 
 const props = defineProps<{ chat: Chat }>();
 
 const chats = useChatsStore();
+const toasts = useToastsStore();
+
+const MAX_ATTACHMENTS = 10;
+/** Pictures waiting to be sent with the next message. */
+const attachments = ref<PreparedImage[]>([]);
+const fileInput = ref<HTMLInputElement | null>(null);
+const dragging = ref(false);
 
 const draft = ref('');
 const scroller = ref<HTMLElement | null>(null);
@@ -17,7 +26,48 @@ let follow = true;
 
 const rt = computed(() => chats.runtimeOf(props.chat.id));
 const streamingHtml = computed(() => (rt.value.streaming ? renderMarkdown(rt.value.streaming) : ''));
-const canSend = computed(() => !rt.value.running && draft.value.trim().length > 0 && chats.isConfigured);
+const canSend = computed(
+  () =>
+    !rt.value.running &&
+    chats.isConfigured &&
+    (draft.value.trim().length > 0 || attachments.value.length > 0),
+);
+
+async function addFiles(files: File[]) {
+  for (const file of files) {
+    if (attachments.value.length >= MAX_ATTACHMENTS) {
+      toasts.warning(`Не больше ${MAX_ATTACHMENTS} изображений в одном сообщении`);
+      break;
+    }
+    try {
+      attachments.value.push(await prepareImage(file));
+    } catch (e) {
+      toasts.error(e, file.name || 'Изображение');
+    }
+  }
+}
+
+function onPaste(e: ClipboardEvent) {
+  const files = imageFilesFrom(e.clipboardData);
+  if (!files.length) return; // ordinary text paste
+  e.preventDefault();
+  void addFiles(files);
+}
+
+function onDrop(e: DragEvent) {
+  dragging.value = false;
+  void addFiles(imageFilesFrom(e.dataTransfer));
+}
+
+function onFilesPicked(e: Event) {
+  const target = e.target as HTMLInputElement;
+  void addFiles(Array.from(target.files ?? []));
+  target.value = ''; // so the same file can be picked again
+}
+
+function removeAttachment(id: string) {
+  attachments.value = attachments.value.filter((a) => a.id !== id);
+}
 
 function onScroll() {
   const el = scroller.value;
@@ -37,6 +87,7 @@ watch(
   () => {
     follow = true;
     draft.value = '';
+    attachments.value = [];
     void scrollToBottom(true);
     input.value?.focus();
   },
@@ -56,9 +107,11 @@ function resizeInput() {
 function send() {
   if (!canSend.value) return;
   const text = draft.value;
+  const images = attachments.value;
   draft.value = '';
+  attachments.value = [];
   follow = true;
-  void chats.send(props.chat.id, text);
+  void chats.send(props.chat.id, text, images);
   void nextTick(resizeInput);
 }
 
@@ -81,7 +134,12 @@ function onKeydown(e: KeyboardEvent) {
       </div>
 
       <template v-for="item in chat.items" :key="item.id">
-        <div v-if="item.kind === 'user'" class="msg user">{{ item.text }}</div>
+        <div v-if="item.kind === 'user'" class="msg user">
+          <div v-if="item.images?.length" class="sent-images">
+            <img v-for="(src, i) in item.images" :key="i" :src="src" alt="Отправленное изображение" />
+          </div>
+          <template v-if="item.text">{{ item.text }}</template>
+        </div>
         <!-- eslint-disable-next-line vue/no-v-html -- escaped by renderMarkdown -->
         <div v-else-if="item.kind === 'assistant'" class="msg answer md" v-html="renderMarkdown(item.text)" />
         <div v-else-if="item.kind === 'tool'" class="tool" :title="item.text">
@@ -100,21 +158,60 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </div>
 
-    <div class="composer">
+    <div
+      class="composer"
+      :class="{ dragging }"
+      @dragover.prevent="dragging = true"
+      @dragleave="dragging = false"
+      @drop.prevent="onDrop"
+    >
+      <div v-if="attachments.length" class="attachments">
+        <div v-for="image in attachments" :key="image.id" class="attachment" :title="image.name">
+          <img :src="image.preview" :alt="image.name" />
+          <button
+            class="attachment-remove"
+            title="Убрать"
+            :aria-label="`Убрать ${image.name}`"
+            @click="removeAttachment(image.id)"
+          >
+            <X :size="11" />
+          </button>
+        </div>
+      </div>
       <textarea
         ref="input"
         v-model="draft"
         rows="1"
         :placeholder="
           chats.isConfigured
-            ? 'Сообщение… (Enter — отправить, Shift+Enter — новая строка)'
+            ? 'Сообщение… (Enter — отправить, Shift+Enter — новая строка, ⌘V — вставить фото)'
             : 'Сначала укажите программу чата в панели «Чаты»'
         "
         :disabled="!chats.isConfigured"
         @input="resizeInput"
         @keydown="onKeydown"
+        @paste="onPaste"
+      />
+      <input
+        ref="fileInput"
+        class="file-input"
+        type="file"
+        accept="image/*"
+        multiple
+        tabindex="-1"
+        aria-hidden="true"
+        @change="onFilesPicked"
       />
       <div class="composer-bar">
+        <button
+          class="btn small icon"
+          title="Прикрепить изображение (можно также вставить из буфера или перетащить)"
+          aria-label="Прикрепить изображение"
+          :disabled="!chats.isConfigured"
+          @click="fileInput?.click()"
+        >
+          <Paperclip :size="14" />
+        </button>
         <ChatOptions :chat="chat" :disabled="rt.running" />
         <span class="spacer" />
         <button
@@ -225,6 +322,65 @@ function onKeydown(e: KeyboardEvent) {
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
+}
+.composer.dragging {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+.file-input {
+  display: none;
+}
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 4px 8px;
+}
+.attachment {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+.attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-bright);
+}
+.attachment-remove:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.sent-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.sent-images:last-child {
+  margin-bottom: 0;
+}
+.sent-images img {
+  max-width: 160px;
+  max-height: 160px;
+  border-radius: 6px;
 }
 .composer:focus-within {
   border-color: var(--accent);

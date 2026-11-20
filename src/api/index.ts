@@ -5,6 +5,7 @@ import type {
   BuildConfig,
   ChatAccess,
   ChatEffort,
+  ChatImage,
   ChatRunResult,
   Commit,
   Device,
@@ -71,6 +72,7 @@ export const api = {
       chatId: string;
       command: string;
       prompt: string;
+      images: ChatImage[];
       sessionId: string | null;
       access: ChatAccess;
       /** Null: the program's own default. */

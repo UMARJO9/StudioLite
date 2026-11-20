@@ -73,7 +73,7 @@ describe('interpretChatLine', () => {
     ).toEqual([]);
   });
 
-  it('reports the result with cost', () => {
+  it('reports the result', () => {
     expect(
       interpretChatLine(
         line({
@@ -88,7 +88,7 @@ describe('interpretChatLine', () => {
       ),
     ).toEqual([
       { type: 'session', id: 's1' },
-      { type: 'done', isError: false, costUsd: 0.0038 },
+      { type: 'done', isError: false },
     ]);
   });
 
@@ -108,7 +108,7 @@ describe('interpretChatLine', () => {
       type: 'item',
       item: { kind: 'error', text: 'Запрос завершился с ошибкой (error_during_execution)' },
     });
-    expect(updates[2]).toEqual({ type: 'done', isError: true, costUsd: null });
+    expect(updates[2]).toEqual({ type: 'done', isError: true });
   });
 });
 

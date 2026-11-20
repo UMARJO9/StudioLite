@@ -16,7 +16,7 @@ export type ChatUpdate =
   | { type: 'streamReset' }
   | { type: 'streamDelta'; text: string }
   | { type: 'item'; item: ChatItemData }
-  | { type: 'done'; isError: boolean; costUsd: number | null };
+  | { type: 'done'; isError: boolean };
 
 type Json = Record<string, unknown>;
 
@@ -109,11 +109,7 @@ export function interpretChatLine(line: string): ChatUpdate[] {
         const text = str(data.result) || `Запрос завершился с ошибкой (${str(data.subtype) || '?'})`;
         updates.push({ type: 'item', item: { kind: 'error', text } });
       }
-      updates.push({
-        type: 'done',
-        isError,
-        costUsd: typeof data.total_cost_usd === 'number' ? data.total_cost_usd : null,
-      });
+      updates.push({ type: 'done', isError });
       break;
     }
   }

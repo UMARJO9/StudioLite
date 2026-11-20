@@ -125,9 +125,6 @@ function onAccessChange(e: Event) {
             <option value="editFiles">правка файлов</option>
           </select>
         </label>
-        <span v-if="rt.costUsd !== null" class="cost" title="Стоимость последнего ответа">
-          ${{ rt.costUsd.toFixed(3) }}
-        </span>
         <span class="spacer" />
         <button
           v-if="rt.running"
@@ -271,9 +268,6 @@ textarea {
   border-radius: 4px;
   color: var(--text);
   font: inherit;
-}
-.cost {
-  font-variant-numeric: tabular-nums;
 }
 .spacer {
   flex: 1;

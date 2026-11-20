@@ -32,7 +32,6 @@ interface ChatRuntime {
   stopping: boolean;
   /** Text of the answer being received right now. */
   streaming: string;
-  costUsd: number | null;
 }
 
 const NEW_CHAT_TITLE = 'Новый чат';
@@ -75,7 +74,7 @@ export const useChatsStore = defineStore('chats', () => {
   const isConfigured = computed(() => commandPath.value !== null);
 
   function runtimeOf(id: string): ChatRuntime {
-    runtime[id] ??= { running: false, stopping: false, streaming: '', costUsd: null };
+    runtime[id] ??= { running: false, stopping: false, streaming: '' };
     return runtime[id];
   }
 
@@ -238,7 +237,6 @@ export const useChatsStore = defineStore('chats', () => {
           break;
         case 'done':
           finished = true;
-          rt.costUsd = update.costUsd;
           break;
       }
     };

@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { api, type ProjectInfo } from '../api';
@@ -70,3 +70,6 @@ export const useProjectStore = defineStore('project', () => {
 
   return { info, path, sep, opening, problems, open, pickAndOpen, restore };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useProjectStore, import.meta.hot));

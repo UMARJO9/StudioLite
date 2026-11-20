@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api, type FileEntry } from '../api';
 import { useProjectStore } from './project';
@@ -90,3 +90,6 @@ export const useTreeStore = defineStore('tree', () => {
 
   return { rows, selected, loading, expanded, reset, toggle, refresh, collapseAll };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useTreeStore, import.meta.hot));

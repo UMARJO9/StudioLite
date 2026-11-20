@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref } from 'vue';
 import { errorMessage } from '../utils/errors';
 
@@ -48,3 +48,6 @@ export const useToastsStore = defineStore('toasts', () => {
     },
   };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useToastsStore, import.meta.hot));

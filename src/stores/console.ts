@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { shallowRef } from 'vue';
 import type { OutLine } from '../api';
 import { classifyLine, type ConsoleLevel } from '../utils/consoleLevel';
@@ -48,3 +48,6 @@ export const useConsoleStore = defineStore('console', () => {
 
   return { lines, append, note, clear };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useConsoleStore, import.meta.hot));

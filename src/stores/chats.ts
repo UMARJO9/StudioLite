@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import { LazyStore } from '@tauri-apps/plugin-store';
 import { api, type ChatAccess, type ChatEffort, type TaskEvent } from '../api';
@@ -363,3 +363,6 @@ export const useChatsStore = defineStore('chats', () => {
     stop,
   };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useChatsStore, import.meta.hot));

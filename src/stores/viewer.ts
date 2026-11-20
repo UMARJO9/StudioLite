@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, markRaw, ref } from 'vue';
 import { api, type FileEntry } from '../api';
 import { errorMessage } from '../utils/errors';
@@ -116,3 +116,6 @@ export const useViewerStore = defineStore('viewer', () => {
 
   return { tabs, active, activeFile, open, pin, close, reloadActive, reset, showBuild };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useViewerStore, import.meta.hot));

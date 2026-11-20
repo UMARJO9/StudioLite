@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref, shallowRef } from 'vue';
 import { api, type Commit, type GitStatusKind } from '../api';
 import { buildStatusIndex, emptyStatusIndex, lookupStatus, type StatusIndex } from '../utils/gitStatus';
@@ -105,3 +105,6 @@ export const useGitStore = defineStore('git', () => {
     statusOf,
   };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useGitStore, import.meta.hot));

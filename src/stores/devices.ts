@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { api, type BootEvent, type Device } from '../api';
 import { toAppError } from '../utils/errors';
@@ -115,3 +115,6 @@ export const useDevicesStore = defineStore('devices', () => {
     startAvd,
   };
 });
+
+// Without this, editing the store during development leaves the old instance in use.
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useDevicesStore, import.meta.hot));

@@ -210,6 +210,19 @@ impl TaskState {
     }
 }
 
+impl TaskState {
+    /// Asks the running task to stop; `run_streaming` reacts by killing its process tree.
+    pub fn cancel_current(&self) -> bool {
+        match self.current.lock().unwrap().as_ref() {
+            Some(handle) => {
+                handle.cancel.send_replace(true);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
 /// Releases the task slot when the command finishes, including on early return.
 pub struct TaskGuard<'a> {
     state: &'a TaskState,
@@ -319,13 +332,5 @@ async fn kill_tree(pid: u32) {
 /// Stops the running task. Returns false if nothing was running.
 #[tauri::command]
 pub async fn stop_task(state: tauri::State<'_, TaskState>) -> AppResult<bool> {
-    let current = state.current.lock().unwrap().clone();
-    match current {
-        Some(handle) => {
-            // run_streaming is waiting on this and kills the tree.
-            handle.cancel.send_replace(true);
-            Ok(true)
-        }
-        None => Ok(false),
-    }
+    Ok(state.cancel_current())
 }

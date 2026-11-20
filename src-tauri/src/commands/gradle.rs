@@ -391,6 +391,142 @@ mod tests {
         assert!(!bad("feature:login", "release"));
     }
 
+    /// End-to-end checks of the task pipeline against a stand-in `gradlew` script.
+    #[cfg(unix)]
+    mod pipeline {
+        use std::sync::{Arc, Mutex};
+
+        use tauri::ipc::{Channel, InvokeResponseBody};
+
+        use super::super::*;
+
+        const FAKE_GRADLEW: &str = r#"#!/bin/sh
+echo "fake gradle $@"
+echo "w: something deprecated" >&2
+if [ -f slow.flag ]; then
+  sleep 300 &
+  echo $! > child.pid
+  echo "started child"
+  wait
+fi
+if [ -f fail.flag ]; then
+  echo "FAILURE: Build failed with an exception."
+  exit 3
+fi
+echo "BUILD SUCCESSFUL in 1s"
+"#;
+
+        fn fake_project(name: &str, flags: &[&str]) -> PathBuf {
+            let dir = std::env::temp_dir().join(format!("studiolite-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("gradlew"), FAKE_GRADLEW).unwrap();
+            for flag in flags {
+                std::fs::write(dir.join(flag), "").unwrap();
+            }
+            dir
+        }
+
+        /// A channel that records every event as JSON text.
+        fn recording_channel() -> (Channel<TaskEvent>, Arc<Mutex<Vec<String>>>) {
+            let events = Arc::new(Mutex::new(Vec::new()));
+            let sink = events.clone();
+            let channel = Channel::new(move |body| {
+                if let InvokeResponseBody::Json(json) = body {
+                    sink.lock().unwrap().push(json);
+                }
+                Ok(())
+            });
+            (channel, events)
+        }
+
+        async fn run_build(project: &Path, state: &TaskState) -> (AppResult<TaskResult>, String) {
+            let (channel, events) = recording_channel();
+            let guard = state.begin().unwrap();
+            let started = Instant::now();
+            let (out, forwarder) = TaskOutput::start(channel);
+            let result =
+                build_steps(project, &BuildConfig::default(), &guard.handle, &out).await;
+            drop(out);
+            forwarder.await.unwrap();
+            let log = events.lock().unwrap().join("\n");
+            (finish(result, started, None), log)
+        }
+
+        #[tokio::test]
+        async fn streams_output_and_reports_success() {
+            let project = fake_project("ok", &[]);
+            let state = TaskState::default();
+            let (result, log) = run_build(&project, &state).await;
+            let result = result.unwrap();
+            assert!(result.success && !result.cancelled);
+            assert_eq!(result.exit_code, Some(0));
+            assert!(log.contains(r#""type":"stage","label":":app:assembleDebug""#), "{log}");
+            assert!(log.contains("fake gradle :app:assembleDebug --console=plain"), "{log}");
+            assert!(log.contains(r#""stream":"stderr","text":"w: something deprecated""#), "{log}");
+            assert!(log.contains("BUILD SUCCESSFUL"), "{log}");
+            // The slot is free again once the task is over.
+            assert!(state.begin().is_ok());
+        }
+
+        #[tokio::test]
+        async fn reports_a_failed_build_with_its_exit_code() {
+            let project = fake_project("fail", &["fail.flag"]);
+            let (result, log) = run_build(&project, &TaskState::default()).await;
+            let result = result.unwrap();
+            assert!(!result.success && !result.cancelled);
+            assert_eq!(result.exit_code, Some(3));
+            assert!(log.contains("FAILURE: Build failed"), "{log}");
+        }
+
+        #[tokio::test]
+        async fn refuses_a_second_task_and_a_project_without_gradlew() {
+            let state = TaskState::default();
+            let _first = state.begin().unwrap();
+            assert!(matches!(state.begin(), Err(AppError::TaskAlreadyRunning)));
+
+            let project = fake_project("nogradlew", &[]);
+            std::fs::remove_file(project.join("gradlew")).unwrap();
+            let (result, _) = run_build(&project, &TaskState::default()).await;
+            assert!(matches!(result, Err(AppError::GradlewNotFound)));
+        }
+
+        #[tokio::test]
+        async fn stop_kills_the_whole_process_tree() {
+            let project = fake_project("slow", &["slow.flag"]);
+            let state = Arc::new(TaskState::default());
+            assert!(!state.cancel_current(), "nothing to stop yet");
+
+            let pid_file = project.join("child.pid");
+            let stopper = {
+                let state = state.clone();
+                let pid_file = pid_file.clone();
+                tokio::spawn(async move {
+                    // Wait until the script has started its grandchild, then press Stop.
+                    for _ in 0..100 {
+                        if pid_file.is_file() {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                    assert!(state.cancel_current());
+                })
+            };
+
+            let started = Instant::now();
+            let (result, _) = run_build(&project, &state).await;
+            stopper.await.unwrap();
+            let result = result.unwrap();
+            assert!(result.cancelled && !result.success);
+            assert!(started.elapsed() < Duration::from_secs(20), "stop must not wait for the task");
+
+            let child: libc::pid_t = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let alive = unsafe { libc::kill(child, 0) } == 0;
+            assert!(!alive, "grandchild `sleep` survived Stop");
+        }
+    }
+
     #[test]
     fn validates_serials_and_application_ids() {
         assert!(is_valid_serial("emulator-5554"));

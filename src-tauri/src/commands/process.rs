@@ -166,7 +166,21 @@ pub struct TaskHandle {
     cancel: watch::Sender<bool>,
 }
 
+impl Default for TaskHandle {
+    fn default() -> Self {
+        Self {
+            pid: Mutex::new(None),
+            cancel: watch::Sender::new(false),
+        }
+    }
+}
+
 impl TaskHandle {
+    /// Asks the process run under this handle to stop.
+    pub fn cancel(&self) {
+        self.cancel.send_replace(true);
+    }
+
     pub fn is_cancelled(&self) -> bool {
         *self.cancel.borrow()
     }
@@ -198,10 +212,7 @@ impl TaskState {
         if current.is_some() {
             return Err(AppError::TaskAlreadyRunning);
         }
-        let handle = Arc::new(TaskHandle {
-            pid: Mutex::new(None),
-            cancel: watch::Sender::new(false),
-        });
+        let handle = Arc::new(TaskHandle::default());
         *current = Some(handle.clone());
         Ok(TaskGuard {
             state: self,
@@ -215,7 +226,7 @@ impl TaskState {
     pub fn cancel_current(&self) -> bool {
         match self.current.lock().unwrap().as_ref() {
             Some(handle) => {
-                handle.cancel.send_replace(true);
+                handle.cancel();
                 true
             }
             None => false,
@@ -238,13 +249,27 @@ impl Drop for TaskGuard<'_> {
 /// Runs a task step, streaming stdout/stderr to `out`. Cancellation kills the process tree
 /// and returns `AppError::Cancelled`.
 pub async fn run_streaming(
-    mut cmd: Command,
+    cmd: Command,
     program: &str,
     handle: &TaskHandle,
     out: &TaskOutput,
 ) -> AppResult<ExitStatus> {
+    run_streaming_with_input(cmd, program, handle, out, None).await
+}
+
+/// Like `run_streaming`, but first writes `input` to the process's stdin and closes it.
+pub async fn run_streaming_with_input(
+    mut cmd: Command,
+    program: &str,
+    handle: &TaskHandle,
+    out: &TaskOutput,
+    input: Option<Vec<u8>>,
+) -> AppResult<ExitStatus> {
     handle.check()?;
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    if input.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
     // Own process group, so Stop can signal the whole tree at once.
     #[cfg(unix)]
     cmd.process_group(0);
@@ -255,6 +280,14 @@ pub async fn run_streaming(
     })?;
     let pid = child.id();
     *handle.pid.lock().unwrap() = pid;
+
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let _ = stdin.write_all(&input).await;
+            // Dropping stdin sends EOF, which is what tells the program the input is complete.
+        });
+    }
 
     let mut readers = Vec::new();
     if let Some(stdout) = child.stdout.take() {

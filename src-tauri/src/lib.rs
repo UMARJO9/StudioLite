@@ -2,7 +2,7 @@ mod commands;
 mod config;
 mod error;
 
-use commands::{android, fs, git, gradle, process, sdk};
+use commands::{android, chat, fs, git, gradle, process, sdk};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -11,6 +11,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(process::TaskState::default())
+        .manage(chat::ChatState::default())
         .invoke_handler(tauri::generate_handler![
             fs::open_project,
             fs::read_dir,
@@ -28,6 +29,9 @@ pub fn run() {
             gradle::package_project,
             gradle::clean_project,
             gradle::stop_gradle_daemons,
+            chat::chat_check,
+            chat::chat_send,
+            chat::chat_stop,
             process::stop_task,
         ])
         .run(tauri::generate_context!())

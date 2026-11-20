@@ -3,6 +3,8 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import type {
   BootEvent,
   BuildConfig,
+  ChatAccess,
+  ChatRunResult,
   Commit,
   Device,
   FileContent,
@@ -60,5 +62,19 @@ export const api = {
     invoke<TaskResult>('clean_project', { project, onEvent: channel(onEvent) }),
   stopGradleDaemons: (project: string, onEvent: (e: TaskEvent) => void) =>
     invoke<TaskResult>('stop_gradle_daemons', { project, onEvent: channel(onEvent) }),
+  /** Resolves with the full path of the chat program, or rejects if it can't be found. */
+  chatCheck: (command: string) => invoke<string>('chat_check', { command }),
+  chatSend: (
+    args: {
+      project: string;
+      chatId: string;
+      command: string;
+      prompt: string;
+      sessionId: string | null;
+      access: ChatAccess;
+    },
+    onEvent: (e: TaskEvent) => void,
+  ) => invoke<ChatRunResult>('chat_send', { ...args, onEvent: channel(onEvent) }),
+  chatStop: (chatId: string) => invoke<boolean>('chat_stop', { chatId }),
   stopTask: () => invoke<boolean>('stop_task'),
 };

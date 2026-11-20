@@ -1,14 +1,24 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ChevronLeft, ChevronRight, FolderOpen, TriangleAlert, X } from 'lucide-vue-next';
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  MessageSquare,
+  TriangleAlert,
+  X,
+} from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
+import ChatList from './components/ChatList.vue';
+import ChatView from './components/ChatView.vue';
 import ConsolePanel from './components/ConsolePanel.vue';
 import FileViewer from './components/FileViewer.vue';
 import FileTree from './components/FileTree.vue';
 import GitGraph from './components/GitGraph.vue';
 import Splitter from './components/Splitter.vue';
 import ToastHost from './components/ToastHost.vue';
+import { chatTabId, useChatsStore } from './stores/chats';
 import { useDevicesStore } from './stores/devices';
 import { useGitStore } from './stores/git';
 import { useProjectStore } from './stores/project';
@@ -25,6 +35,7 @@ const toasts = useToastsStore();
 const devices = useDevicesStore();
 const tasks = useTasksStore();
 const viewer = useViewerStore();
+const chats = useChatsStore();
 
 // --- data refresh -----------------------------------------------------------
 // No timers: data is reloaded when a project opens, when the window regains focus,
@@ -39,6 +50,7 @@ watch(
     tree.reset();
     git.reset();
     viewer.reset();
+    void chats.loadFor(project.path);
     void refreshProjectData();
     // sdk.dir in local.properties may point at a different SDK for this project.
     void devices.refresh();
@@ -70,6 +82,21 @@ let sizeAtDragStart = 0;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+// Chats panel on the right.
+const CHAT_PANEL_MIN = 200;
+const chatPanelWidth = ref(280);
+const chatPanelCollapsed = ref(false);
+function toggleChatPanel() {
+  chatPanelCollapsed.value = !chatPanelCollapsed.value;
+  saveSetting('chatPanelCollapsed', chatPanelCollapsed.value);
+}
+function startChatPanelDrag() {
+  sizeAtDragStart = chatPanelWidth.value;
+}
+function dragChatPanel(delta: number) {
+  chatPanelWidth.value = clamp(sizeAtDragStart - delta, CHAT_PANEL_MIN, window.innerWidth - 400);
 }
 
 function toggleSidebar() {
@@ -121,6 +148,12 @@ function closeTab(path: string) {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
+  const [chatWidth, chatCollapsed] = await Promise.all([
+    loadSetting('chatPanelWidth'),
+    loadSetting('chatPanelCollapsed'),
+  ]);
+  if (chatWidth) chatPanelWidth.value = clamp(chatWidth, CHAT_PANEL_MIN, window.innerWidth - 400);
+  chatPanelCollapsed.value = chatCollapsed === true;
   const [width, height, collapsed, treeFolded, graphFolded] = await Promise.all([
     loadSetting('sidebarWidth'),
     loadSetting('graphHeight'),
@@ -140,7 +173,7 @@ onMounted(async () => {
   } catch (e) {
     toasts.error(e, 'Подписка на фокус окна');
   }
-  await Promise.all([devices.restore(), tasks.restore()]);
+  await Promise.all([devices.restore(), tasks.restore(), chats.restore()]);
   await project.restore();
   // Opening a project refreshes devices itself; cover the "no project yet" start.
   if (!project.info) void devices.refresh();
@@ -253,12 +286,59 @@ onBeforeUnmount(() => {
               <X :size="12" />
             </button>
           </div>
+          <div
+            v-for="chat in chats.openChats"
+            :key="chat.id"
+            class="tab file"
+            :class="{ active: viewer.active === chatTabId(chat.id) }"
+            role="tab"
+            :aria-selected="viewer.active === chatTabId(chat.id)"
+            :title="chat.title"
+            @click="viewer.active = chatTabId(chat.id)"
+            @auxclick.middle="chats.closeTab(chat.id)"
+          >
+            <MessageSquare :size="13" class="tab-icon" :class="{ busy: chats.runtimeOf(chat.id).running }" />
+            <span class="tab-name ellipsis">{{ chat.title }}</span>
+            <button
+              class="tab-close"
+              title="Закрыть вкладку (чат останется в списке)"
+              aria-label="Закрыть вкладку"
+              @click.stop="chats.closeTab(chat.id)"
+            >
+              <X :size="12" />
+            </button>
+          </div>
         </div>
         <div class="tab-content">
           <ConsolePanel v-show="viewer.active === BUILD_TAB" />
           <FileViewer v-if="viewer.activeFile" :tab="viewer.activeFile" />
+          <ChatView v-if="chats.activeChat" :chat="chats.activeChat" />
         </div>
       </main>
+      <Splitter
+        v-show="!chatPanelCollapsed"
+        direction="vertical"
+        @start="startChatPanelDrag"
+        @drag="dragChatPanel"
+        @end="saveSetting('chatPanelWidth', chatPanelWidth)"
+      />
+      <aside
+        v-show="!chatPanelCollapsed"
+        class="sidebar"
+        :style="{ width: chatPanelWidth + 'px' }"
+      >
+        <ChatList />
+      </aside>
+      <button
+        class="sidebar-handle right"
+        :style="{ right: chatPanelCollapsed ? '0px' : chatPanelWidth + 'px' }"
+        :title="chatPanelCollapsed ? 'Показать панель чатов' : 'Скрыть панель чатов'"
+        :aria-expanded="!chatPanelCollapsed"
+        @click="toggleChatPanel"
+      >
+        <ChevronLeft v-if="chatPanelCollapsed" :size="14" />
+        <ChevronRight v-else :size="14" />
+      </button>
     </div>
 
     <ToastHost />
@@ -310,6 +390,21 @@ onBeforeUnmount(() => {
   border-radius: 0 6px 6px 0;
   color: var(--text-dim);
   opacity: 0.75;
+}
+.sidebar-handle.right {
+  border-right: none;
+  border-left: 1px solid var(--border-strong);
+  border-radius: 6px 0 0 6px;
+}
+.tab-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+.tab-icon.busy {
+  color: var(--accent);
+}
+.tab.file .tab-name {
+  max-width: 180px;
 }
 .sidebar-handle:hover,
 .sidebar-handle:focus-visible {

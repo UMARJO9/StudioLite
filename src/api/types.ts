@@ -103,3 +103,11 @@ export interface TaskResult {
 }
 
 export type PackageVariant = 'debug' | 'release';
+
+export type ChatAccess = 'readOnly' | 'editFiles';
+
+export interface ChatRunResult {
+  exitCode: number | null;
+  cancelled: boolean;
+  durationMs: number;
+}

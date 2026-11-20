@@ -10,6 +10,10 @@ export interface Settings {
   sidebarCollapsed: boolean;
   treeCollapsed: boolean;
   graphCollapsed: boolean;
+  /** Name or full path of the command-line program behind the chat. */
+  chatCommand: string;
+  chatPanelWidth: number;
+  chatPanelCollapsed: boolean;
   graphHeight: number;
 }
 

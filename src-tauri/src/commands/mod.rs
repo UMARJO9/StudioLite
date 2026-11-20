@@ -1,4 +1,5 @@
 pub mod android;
+pub mod chat;
 pub mod fs;
 pub mod git;
 pub mod gradle;

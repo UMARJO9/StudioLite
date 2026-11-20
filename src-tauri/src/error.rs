@@ -37,6 +37,10 @@ pub enum AppError {
     TaskAlreadyRunning,
     #[error("Отменено")]
     Cancelled,
+    #[error("Программа чата «{0}» не найдена. Укажите её имя или полный путь в панели «Чаты»")]
+    ChatCliNotFound(String),
+    #[error("Этот чат ещё отвечает на предыдущее сообщение")]
+    ChatBusy,
 }
 
 impl AppError {
@@ -57,6 +61,8 @@ impl AppError {
             AppError::Gradle(_) => "gradle",
             AppError::TaskAlreadyRunning => "taskAlreadyRunning",
             AppError::Cancelled => "cancelled",
+            AppError::ChatCliNotFound(_) => "chatCliNotFound",
+            AppError::ChatBusy => "chatBusy",
         }
     }
 }

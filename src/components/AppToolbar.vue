@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { FolderOpen, GitBranch } from 'lucide-vue-next';
+import { Asterisk, FolderOpen, GitBranch } from 'lucide-vue-next';
+import { useChatsStore } from '../stores/chats';
 import { useGitStore } from '../stores/git';
 import BuildButton from './BuildButton.vue';
 import DeviceSelector from './DeviceSelector.vue';
@@ -9,6 +10,7 @@ import { useProjectStore } from '../stores/project';
 
 const project = useProjectStore();
 const git = useGitStore();
+const chats = useChatsStore();
 </script>
 
 <template>
@@ -33,6 +35,15 @@ const git = useGitStore();
     <DeviceSelector />
     <BuildButton />
     <PackageButton />
+    <button
+      class="btn icon chat-button"
+      :disabled="!project.info"
+      :title="project.info ? 'Новый чат' : 'Сначала откройте проект'"
+      aria-label="Новый чат"
+      @click="chats.openNew()"
+    >
+      <Asterisk :size="20" :stroke-width="2.6" />
+    </button>
     <div class="divider" />
     <TaskStatus class="task-status" />
   </header>
@@ -65,6 +76,12 @@ const git = useGitStore();
   border-radius: 12px;
   color: var(--text);
   font-size: 12px;
+}
+.chat-button:not(:disabled) {
+  color: #d97757;
+}
+.chat-button:hover:not(:disabled) {
+  color: #e8926f;
 }
 .task-status {
   flex: 1;

@@ -173,13 +173,24 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
+  /** For the toolbar button: go to an unused chat if there is one, otherwise start a new one. */
+  function openNew(): void {
+    if (!isConfigured.value) {
+      toasts.warning('Сначала укажите программу чата в панели «Чаты» (шестерёнка)');
+      return;
+    }
+    const unused = chats.value.find((c) => c.items.length === 0);
+    if (unused) openTab(unused.id);
+    else create();
+  }
+
   function create(): Chat {
     const now = Date.now();
     const chat: Chat = {
       id: crypto.randomUUID(),
       title: NEW_CHAT_TITLE,
       sessionId: null,
-      access: 'readOnly',
+      access: 'auto',
       // A new chat starts with the settings of the most recent one.
       model: sorted.value[0]?.model ?? null,
       effort: sorted.value[0]?.effort ?? 'medium',
@@ -345,6 +356,7 @@ export const useChatsStore = defineStore('chats', () => {
     openTab,
     closeTab,
     create,
+    openNew,
     remove,
     update,
     send,

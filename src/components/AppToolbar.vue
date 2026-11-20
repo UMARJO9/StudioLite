@@ -2,6 +2,7 @@
 import { Asterisk, FolderOpen, GitBranch } from 'lucide-vue-next';
 import { useChatsStore } from '../stores/chats';
 import { useGitStore } from '../stores/git';
+import { useViewerStore } from '../stores/viewer';
 import BuildButton from './BuildButton.vue';
 import DeviceSelector from './DeviceSelector.vue';
 import PackageButton from './PackageButton.vue';
@@ -11,6 +12,7 @@ import { useProjectStore } from '../stores/project';
 const project = useProjectStore();
 const git = useGitStore();
 const chats = useChatsStore();
+const viewer = useViewerStore();
 </script>
 
 <template>
@@ -45,7 +47,11 @@ const chats = useChatsStore();
       <Asterisk :size="20" :stroke-width="2.6" />
     </button>
     <div class="divider" />
-    <TaskStatus class="task-status" />
+    <TaskStatus
+      class="task-status"
+      title="Показать вывод сборки"
+      @click="viewer.showBuild()"
+    />
   </header>
 </template>
 

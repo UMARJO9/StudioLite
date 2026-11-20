@@ -10,6 +10,7 @@ import { useGitStore } from './git';
 import { useProjectStore } from './project';
 import { useToastsStore } from './toasts';
 import { useTreeStore } from './tree';
+import { useViewerStore } from './viewer';
 
 export type TaskKind =
   | 'build'
@@ -107,6 +108,8 @@ export const useTasksStore = defineStore('tasks', () => {
     elapsedMs.value = 0;
     last.value = null;
     output.clear();
+    // Bring the output into view: its tab is closed until a task runs.
+    useViewerStore().showBuild();
 
     // Ticks only while a task runs, to show elapsed time.
     const timer = setInterval(() => (elapsedMs.value = Date.now() - startedAt), 1000);

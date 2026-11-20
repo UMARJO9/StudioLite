@@ -6,6 +6,8 @@ import { highlightToLines } from '../utils/highlight';
 import { useProjectStore } from './project';
 
 export const BUILD_TAB = 'build';
+/** No tab is selected (nothing is open). */
+export const NO_TAB = '';
 
 export interface FileTab {
   path: string;
@@ -26,8 +28,10 @@ export const useViewerStore = defineStore('viewer', () => {
   const project = useProjectStore();
 
   const tabs = ref<FileTab[]>([]);
-  /** `BUILD_TAB` or the path of an open file. */
-  const active = ref<string>(BUILD_TAB);
+  /** Id of the selected tab: `BUILD_TAB`, a file path, a chat tab id, or `NO_TAB`. */
+  const active = ref<string>(NO_TAB);
+  /** The build output tab appears when a task starts and can be closed like any other. */
+  const buildOpen = ref(false);
 
   const activeFile = computed(() => tabs.value.find((t) => t.path === active.value) ?? null);
 
@@ -96,7 +100,7 @@ export const useViewerStore = defineStore('viewer', () => {
     tabs.value.splice(index, 1);
     if (active.value === path) {
       const neighbour = tabs.value[index] ?? tabs.value[index - 1];
-      active.value = neighbour ? neighbour.path : BUILD_TAB;
+      active.value = neighbour ? neighbour.path : NO_TAB;
     }
   }
 
@@ -107,14 +111,32 @@ export const useViewerStore = defineStore('viewer', () => {
 
   function reset(): void {
     tabs.value = [];
-    active.value = BUILD_TAB;
+    active.value = buildOpen.value ? BUILD_TAB : NO_TAB;
   }
 
   function showBuild(): void {
+    buildOpen.value = true;
     active.value = BUILD_TAB;
   }
 
-  return { tabs, active, activeFile, open, pin, close, reloadActive, reset, showBuild };
+  function closeBuild(): void {
+    buildOpen.value = false;
+    if (active.value === BUILD_TAB) active.value = NO_TAB;
+  }
+
+  return {
+    tabs,
+    active,
+    buildOpen,
+    activeFile,
+    open,
+    pin,
+    close,
+    reloadActive,
+    reset,
+    showBuild,
+    closeBuild,
+  };
 });
 
 // Without this, editing the store during development leaves the old instance in use.

@@ -10,7 +10,7 @@ import { useGitStore } from './git';
 import { useProjectStore } from './project';
 import { useToastsStore } from './toasts';
 import { useTreeStore } from './tree';
-import { BUILD_TAB, useViewerStore } from './viewer';
+import { NO_TAB, useViewerStore } from './viewer';
 
 export interface ChatItem extends ChatItemData {
   id: number;
@@ -170,7 +170,7 @@ export const useChatsStore = defineStore('chats', () => {
     openIds.value.splice(index, 1);
     if (viewer.active === chatTabId(id)) {
       const neighbour = openIds.value[index] ?? openIds.value[index - 1];
-      viewer.active = neighbour ? chatTabId(neighbour) : BUILD_TAB;
+      viewer.active = neighbour ? chatTabId(neighbour) : NO_TAB;
     }
   }
 

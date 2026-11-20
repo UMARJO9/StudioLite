@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  Hammer,
   MessageSquare,
   TriangleAlert,
   X,
@@ -25,7 +26,7 @@ import { useProjectStore } from './stores/project';
 import { useTasksStore } from './stores/tasks';
 import { useToastsStore } from './stores/toasts';
 import { useTreeStore } from './stores/tree';
-import { BUILD_TAB, useViewerStore } from './stores/viewer';
+import { BUILD_TAB, NO_TAB, useViewerStore } from './stores/viewer';
 import { loadSetting, saveSetting } from './utils/persist';
 
 const project = useProjectStore();
@@ -158,6 +159,16 @@ function closeTab(path: string) {
   viewer.close(path);
 }
 
+// When the selected tab goes away and its neighbours are gone too, fall back to any tab left.
+const openTabIds = computed(() => [
+  ...(viewer.buildOpen ? [BUILD_TAB] : []),
+  ...viewer.tabs.map((tab) => tab.path),
+  ...chats.openChats.map((chat) => chatTabId(chat.id)),
+]);
+watch([openTabIds, () => viewer.active], ([ids, active]) => {
+  if (!ids.includes(active)) viewer.active = ids[ids.length - 1] ?? NO_TAB;
+});
+
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
   const [savedChatsHeight, chatsFolded] = await Promise.all([
@@ -278,15 +289,27 @@ onBeforeUnmount(() => {
       </button>
       <main class="center">
         <div class="tabs" role="tablist">
-          <button
-            class="tab"
+          <div
+            v-if="viewer.buildOpen"
+            class="tab file"
             :class="{ active: viewer.active === BUILD_TAB }"
             role="tab"
             :aria-selected="viewer.active === BUILD_TAB"
+            title="Вывод сборки"
             @click="viewer.showBuild()"
+            @auxclick.middle="viewer.closeBuild()"
           >
-            Сборка
-          </button>
+            <Hammer :size="13" class="tab-icon" :class="{ busy: tasks.isRunning }" />
+            <span class="tab-name">Сборка</span>
+            <button
+              class="tab-close"
+              title="Закрыть (откроется снова при следующей сборке)"
+              aria-label="Закрыть вкладку"
+              @click.stop="viewer.closeBuild()"
+            >
+              <X :size="12" />
+            </button>
+          </div>
           <div
             v-for="tab in viewer.tabs"
             :key="tab.path"
@@ -336,6 +359,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="tab-content">
+          <div v-if="viewer.active === NO_TAB" class="empty">
+            <span>Нет открытых вкладок.</span>
+            <span class="empty-hint">
+              Выберите файл в дереве, начните чат или запустите сборку — её вывод откроется здесь.
+            </span>
+          </div>
           <ConsolePanel v-show="viewer.active === BUILD_TAB" />
           <FileViewer v-if="viewer.activeFile" :tab="viewer.activeFile" />
           <ChatView v-if="chats.activeChat" :chat="chats.activeChat" />
@@ -392,6 +421,13 @@ onBeforeUnmount(() => {
   border-radius: 0 6px 6px 0;
   color: var(--text-dim);
   opacity: 0.75;
+}
+.empty-hint {
+  max-width: 420px;
+  font-size: 12px;
+}
+.tabs .tab.file:first-child {
+  border-left: none;
 }
 .tab-icon {
   flex: none;

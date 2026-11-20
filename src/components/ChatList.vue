@@ -13,6 +13,21 @@ const showSettings = ref(false);
 const commandInput = ref(chats.command);
 const checking = ref(false);
 
+// The model list is edited as plain text: one model per line, `id | name | description`.
+const formatModels = () =>
+  chats.models.map((m) => [m.id, m.label, m.hint].filter(Boolean).join(' | ')).join('\n');
+const modelsInput = ref(formatModels());
+watch(() => chats.models, () => (modelsInput.value = formatModels()));
+
+function saveModels() {
+  const list = modelsInput.value
+    .split('\n')
+    .map((line) => line.split('|').map((part) => part.trim()))
+    .filter(([id]) => id)
+    .map(([id, label, hint]) => ({ id, label: label || id, hint: hint ?? '' }));
+  chats.setModels(list);
+}
+
 watch(
   () => chats.command,
   (value) => (commandInput.value = value),
@@ -21,6 +36,7 @@ watch(
 async function saveCommand() {
   checking.value = true;
   try {
+    saveModels();
     const ok = await chats.setCommand(commandInput.value, { notify: true });
     if (ok) showSettings.value = false;
   } finally {
@@ -72,6 +88,19 @@ async function saveCommand() {
           {{ checking ? '…' : 'Сохранить' }}
         </button>
       </div>
+      <label for="chat-models" class="second">Модели для выбора</label>
+      <p class="hint">
+        По одной в строке: <code>идентификатор | название | пояснение</code>. Пустой список —
+        используется модель программы по умолчанию.
+      </p>
+      <textarea
+        id="chat-models"
+        v-model="modelsInput"
+        rows="5"
+        spellcheck="false"
+        autocapitalize="off"
+        placeholder="идентификатор | название | пояснение"
+      />
       <p v-if="chats.commandError" class="status error">{{ chats.commandError }}</p>
       <p v-else-if="chats.commandPath" class="status ok">Найдена: {{ chats.commandPath }}</p>
     </form>
@@ -152,6 +181,31 @@ async function saveCommand() {
   font: inherit;
   font-family: var(--font-mono);
   font-size: 12px;
+}
+.setup textarea {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  resize: vertical;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.setup textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.setup label.second {
+  display: block;
+  margin-top: 12px;
+}
+.hint code {
+  font-family: var(--font-mono);
 }
 .setup input:focus {
   border-color: var(--accent);

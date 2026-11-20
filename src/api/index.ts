@@ -4,6 +4,7 @@ import type {
   BootEvent,
   BuildConfig,
   ChatAccess,
+  ChatEffort,
   ChatRunResult,
   Commit,
   Device,
@@ -72,6 +73,9 @@ export const api = {
       prompt: string;
       sessionId: string | null;
       access: ChatAccess;
+      /** Null: the program's own default. */
+      model: string | null;
+      effort: ChatEffort | null;
     },
     onEvent: (e: TaskEvent) => void,
   ) => invoke<ChatRunResult>('chat_send', { ...args, onEvent: channel(onEvent) }),

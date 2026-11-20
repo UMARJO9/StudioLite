@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import { LazyStore } from '@tauri-apps/plugin-store';
-import { api, type ChatAccess, type TaskEvent } from '../api';
+import { api, type ChatAccess, type ChatEffort, type TaskEvent } from '../api';
 import { interpretChatLine, type ChatItemData, type ChatUpdate } from '../utils/chatProtocol';
 import { errorMessage } from '../utils/errors';
-import { loadSetting, saveSetting } from '../utils/persist';
+import { loadSetting, saveSetting, type ChatModel } from '../utils/persist';
 import { useGitStore } from './git';
 import { useProjectStore } from './project';
 import { useToastsStore } from './toasts';
@@ -21,6 +21,9 @@ export interface Chat {
   /** Session reported by the CLI; passing it back continues the conversation. */
   sessionId: string | null;
   access: ChatAccess;
+  /** Id from the local model list; null means the program's default model. */
+  model: string | null;
+  effort: ChatEffort;
   createdAt: number;
   updatedAt: number;
   items: ChatItem[];
@@ -61,6 +64,8 @@ export const useChatsStore = defineStore('chats', () => {
   const command = ref('');
   const commandPath = ref<string | null>(null);
   const commandError = ref<string | null>(null);
+  /** Models to choose from, besides "default". Edited in the panel's settings. */
+  const models = ref<ChatModel[]>([]);
 
   const sorted = computed(() => [...chats.value].sort((a, b) => b.updatedAt - a.updatedAt));
   const openChats = computed(() =>
@@ -103,7 +108,12 @@ export const useChatsStore = defineStore('chats', () => {
     try {
       const stored = (await storage.get<Chat[]>(projectPath)) ?? [];
       if (loadedFor !== projectPath) return;
-      chats.value = stored;
+      // Chats saved by an older version lack the newer fields.
+      chats.value = stored.map((chat) => ({
+        ...chat,
+        model: chat.model ?? null,
+        effort: chat.effort ?? 'medium',
+      }));
       nextItemId = 1 + Math.max(0, ...stored.flatMap((chat) => chat.items.map((i) => i.id)));
     } catch (e) {
       toasts.error(e, 'Чаты');
@@ -132,8 +142,17 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
+  function setModels(list: ChatModel[]) {
+    models.value = list;
+    saveSetting('chatModels', list);
+  }
+
   async function restore(): Promise<void> {
-    const saved = await loadSetting('chatCommand');
+    const [saved, savedModels] = await Promise.all([
+      loadSetting('chatCommand'),
+      loadSetting('chatModels'),
+    ]);
+    if (Array.isArray(savedModels)) models.value = savedModels;
     if (saved) await setCommand(saved);
   }
 
@@ -161,6 +180,9 @@ export const useChatsStore = defineStore('chats', () => {
       title: NEW_CHAT_TITLE,
       sessionId: null,
       access: 'readOnly',
+      // A new chat starts with the settings of the most recent one.
+      model: sorted.value[0]?.model ?? null,
+      effort: sorted.value[0]?.effort ?? 'medium',
       createdAt: now,
       updatedAt: now,
       items: [],
@@ -179,10 +201,10 @@ export const useChatsStore = defineStore('chats', () => {
     save();
   }
 
-  function setAccess(id: string, access: ChatAccess) {
+  function update(id: string, changes: Partial<Pick<Chat, 'access' | 'model' | 'effort'>>) {
     const chat = chats.value.find((c) => c.id === id);
     if (!chat) return;
-    chat.access = access;
+    Object.assign(chat, changes);
     save();
   }
 
@@ -257,6 +279,8 @@ export const useChatsStore = defineStore('chats', () => {
           prompt,
           sessionId: chat.sessionId,
           access: chat.access,
+          model: chat.model,
+          effort: chat.effort,
         },
         onEvent,
       );
@@ -312,6 +336,8 @@ export const useChatsStore = defineStore('chats', () => {
     commandPath,
     commandError,
     isConfigured,
+    models,
+    setModels,
     runtimeOf,
     loadFor,
     restore,
@@ -320,7 +346,7 @@ export const useChatsStore = defineStore('chats', () => {
     closeTab,
     create,
     remove,
-    setAccess,
+    update,
     send,
     stop,
   };

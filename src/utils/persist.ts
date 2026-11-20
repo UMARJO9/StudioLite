@@ -2,6 +2,13 @@ import { LazyStore } from '@tauri-apps/plugin-store';
 
 const store = new LazyStore('settings.json');
 
+export interface ChatModel {
+  /** What is passed to the chat program. */
+  id: string;
+  label: string;
+  hint: string;
+}
+
 export interface Settings {
   lastProject: string | null;
   selectedDevice: { id: string; avd: string | null } | null;
@@ -12,6 +19,8 @@ export interface Settings {
   graphCollapsed: boolean;
   /** Name or full path of the command-line program behind the chat. */
   chatCommand: string;
+  /** Models offered in the chat's model picker; the list lives only in local settings. */
+  chatModels: ChatModel[];
   chatPanelWidth: number;
   chatPanelCollapsed: boolean;
   graphHeight: number;

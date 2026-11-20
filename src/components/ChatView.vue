@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ArrowUp, LoaderCircle, Square, Wrench } from 'lucide-vue-next';
-import type { ChatAccess } from '../api';
 import { useChatsStore, type Chat } from '../stores/chats';
 import { renderMarkdown } from '../utils/markdown';
+import ChatOptions from './ChatOptions.vue';
 
 const props = defineProps<{ chat: Chat }>();
 
@@ -70,9 +70,6 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-function onAccessChange(e: Event) {
-  chats.setAccess(props.chat.id, (e.target as HTMLSelectElement).value as ChatAccess);
-}
 </script>
 
 <template>
@@ -118,13 +115,7 @@ function onAccessChange(e: Event) {
         @keydown="onKeydown"
       />
       <div class="composer-bar">
-        <label class="access" title="Что чату разрешено делать в проекте">
-          Доступ:
-          <select :value="chat.access" :disabled="rt.running" @change="onAccessChange">
-            <option value="readOnly">только чтение</option>
-            <option value="editFiles">правка файлов</option>
-          </select>
-        </label>
+        <ChatOptions :chat="chat" :disabled="rt.running" />
         <span class="spacer" />
         <button
           v-if="rt.running"
@@ -258,16 +249,6 @@ textarea {
   margin-top: 6px;
   color: var(--text-dim);
   font-size: 12px;
-}
-.access select {
-  height: 22px;
-  margin-left: 2px;
-  padding: 0 4px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  color: var(--text);
-  font: inherit;
 }
 .spacer {
   flex: 1;

@@ -54,24 +54,61 @@ impl Drop for RunningChat<'_> {
     }
 }
 
-/// What the agent may do without asking. There is nobody to ask in non-interactive mode,
-/// so anything beyond this is refused by the CLI.
+/// What the agent may do on its own. Nobody can answer a permission prompt in
+/// non-interactive mode, so whatever a mode would ask about is refused.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChatAccess {
     /// Read and search the project; edits and shell commands are refused.
     ReadOnly,
+    /// Investigate and propose a plan without changing anything.
+    Plan,
     /// Also create and edit files in the project.
     EditFiles,
+    /// The CLI's own classifier decides which actions are safe to run.
+    Auto,
 }
 
 impl ChatAccess {
     fn permission_mode(self) -> &'static str {
         match self {
-            ChatAccess::ReadOnly => "default",
+            ChatAccess::ReadOnly => "manual",
+            ChatAccess::Plan => "plan",
             ChatAccess::EditFiles => "acceptEdits",
+            ChatAccess::Auto => "auto",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChatEffort {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl ChatEffort {
+    fn as_arg(self) -> &'static str {
+        match self {
+            ChatEffort::Low => "low",
+            ChatEffort::Medium => "medium",
+            ChatEffort::High => "high",
+            ChatEffort::Xhigh => "xhigh",
+            ChatEffort::Max => "max",
+        }
+    }
+}
+
+/// Model names come from local settings and go on the command line.
+fn is_valid_model(model: &str) -> bool {
+    (1..=100).contains(&model.len())
+        && !model.starts_with('-')
+        && model
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-:[]".contains(c))
 }
 
 #[derive(Debug, Serialize)]
@@ -178,6 +215,8 @@ pub async fn chat_send(
     prompt: String,
     session_id: Option<String>,
     access: ChatAccess,
+    model: Option<String>,
+    effort: Option<ChatEffort>,
     on_event: Channel<TaskEvent>,
     state: tauri::State<'_, ChatState>,
 ) -> AppResult<ChatRunResult> {
@@ -196,7 +235,19 @@ pub async fn chat_send(
         "--include-partial-messages",
         "--permission-mode",
         access.permission_mode(),
+        // Nothing can answer a prompt here: refuse instead of waiting.
+        "--permission-prompts",
+        "none",
     ]);
+    if let Some(model) = model.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+        if !is_valid_model(model) {
+            return Err(AppError::InvalidArgument(format!("модель «{model}»")));
+        }
+        cmd.args(["--model", model]);
+    }
+    if let Some(effort) = effort {
+        cmd.args(["--effort", effort.as_arg()]);
+    }
     if let Some(session) = session_id.as_deref().filter(|s| !s.is_empty()) {
         if !is_valid_session_id(session) {
             return Err(AppError::InvalidArgument(format!("сессия «{session}»")));
@@ -314,6 +365,15 @@ mod tests {
         let log = events.lock().unwrap().join("\n");
         assert!(log.contains("--not-a-flag"), "{log}");
         assert!(log.contains(r#"{\"type\":\"result\"}"#), "{log}");
+    }
+
+    #[test]
+    fn validates_model_names() {
+        assert!(is_valid_model("some-model-5-5"));
+        assert!(is_valid_model("vendor.model-v2:0[1m]"));
+        assert!(!is_valid_model("--dangerously-skip-permissions"));
+        assert!(!is_valid_model("a b"));
+        assert!(!is_valid_model(""));
     }
 
     #[test]

@@ -104,7 +104,8 @@ export interface TaskResult {
 
 export type PackageVariant = 'debug' | 'release';
 
-export type ChatAccess = 'readOnly' | 'editFiles';
+export type ChatAccess = 'readOnly' | 'plan' | 'editFiles' | 'auto';
+export type ChatEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface ChatRunResult {
   exitCode: number | null;

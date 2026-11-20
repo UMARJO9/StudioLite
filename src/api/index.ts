@@ -5,6 +5,7 @@ import type {
   BuildConfig,
   Commit,
   Device,
+  FileContent,
   FileEntry,
   GitFileStatus,
   PackageVariant,
@@ -26,6 +27,8 @@ function channel<T>(onMessage: (event: T) => void): Channel<T> {
 export const api = {
   openProject: (path: string) => invoke<ProjectInfo>('open_project', { path }),
   readDir: (project: string, path: string) => invoke<FileEntry[]>('read_dir', { project, path }),
+  readFile: (project: string, path: string) =>
+    invoke<FileContent>('read_file', { project, path }),
   openInSystem: (project: string, path: string) =>
     invoke<void>('open_in_system', { project, path }),
   revealInFileManager: (project: string, path: string) =>

@@ -17,6 +17,7 @@ import { useGitStore } from '../stores/git';
 import { useProjectStore } from '../stores/project';
 import { useToastsStore } from '../stores/toasts';
 import { useTreeStore, type TreeRow } from '../stores/tree';
+import { useViewerStore } from '../stores/viewer';
 import ContextMenu, { type MenuItem } from './ContextMenu.vue';
 import VirtualList from './VirtualList.vue';
 
@@ -27,19 +28,26 @@ const project = useProjectStore();
 const tree = useTreeStore();
 const git = useGitStore();
 const toasts = useToastsStore();
+const viewer = useViewerStore();
 
 const ROW_HEIGHT = 22;
 const INDENT = 14;
 
 const menu = ref<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
-/** Hook for the future editor / diff viewer. Intentionally does nothing yet. */
-function onFileOpen(_entry: FileEntry) {}
+/** Single click previews a file, double click keeps its tab open. */
+function onFileOpen(entry: FileEntry, pin: boolean) {
+  viewer.open(entry, { pin });
+}
 
 function onClick(row: TreeRow) {
   tree.selected = row.entry.path;
   if (row.entry.isDir) void tree.toggle(row.entry);
-  else onFileOpen(row.entry);
+  else onFileOpen(row.entry, false);
+}
+
+function onDoubleClick(row: TreeRow) {
+  if (!row.entry.isDir) onFileOpen(row.entry, true);
 }
 
 async function guarded(action: () => Promise<void>, what: string) {
@@ -125,6 +133,7 @@ function onContextMenu(e: MouseEvent, entry: FileEntry) {
             :style="{ paddingLeft: 6 + row.depth * INDENT + 'px' }"
             :title="row.entry.path"
             @click="onClick(row)"
+            @dblclick="onDoubleClick(row)"
             @contextmenu.prevent="onContextMenu($event, row.entry)"
           >
             <span class="chevron">

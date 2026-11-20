@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ChevronLeft, ChevronRight, FolderOpen, TriangleAlert } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, FolderOpen, TriangleAlert, X } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
 import ConsolePanel from './components/ConsolePanel.vue';
+import FileViewer from './components/FileViewer.vue';
 import FileTree from './components/FileTree.vue';
 import GitGraph from './components/GitGraph.vue';
 import Splitter from './components/Splitter.vue';
@@ -14,6 +15,7 @@ import { useProjectStore } from './stores/project';
 import { useTasksStore } from './stores/tasks';
 import { useToastsStore } from './stores/toasts';
 import { useTreeStore } from './stores/tree';
+import { BUILD_TAB, useViewerStore } from './stores/viewer';
 import { loadSetting, saveSetting } from './utils/persist';
 
 const project = useProjectStore();
@@ -22,12 +24,13 @@ const git = useGitStore();
 const toasts = useToastsStore();
 const devices = useDevicesStore();
 const tasks = useTasksStore();
+const viewer = useViewerStore();
 
 // --- data refresh -----------------------------------------------------------
 // No timers: data is reloaded when a project opens, when the window regains focus,
 // after a task finishes and on the refresh buttons.
 async function refreshProjectData() {
-  await Promise.all([tree.refresh(), git.refresh()]);
+  await Promise.all([tree.refresh(), git.refresh(), viewer.reloadActive()]);
 }
 
 watch(
@@ -35,6 +38,7 @@ watch(
   () => {
     tree.reset();
     git.reset();
+    viewer.reset();
     void refreshProjectData();
     // sdk.dir in local.properties may point at a different SDK for this project.
     void devices.refresh();
@@ -110,10 +114,10 @@ function dragGraph(delta: number) {
 }
 
 // --- center tabs ------------------------------------------------------------
-// Only the build console for now; logcat and others will be added here.
-const tabs = [{ id: 'build', title: 'Сборка' }] as const;
-type TabId = (typeof tabs)[number]['id'];
-const activeTab = ref<TabId>('build');
+// The build console plus one tab per file open in the viewer; logcat will be added here.
+function closeTab(path: string) {
+  viewer.close(path);
+}
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
@@ -216,19 +220,43 @@ onBeforeUnmount(() => {
       <main class="center">
         <div class="tabs" role="tablist">
           <button
-            v-for="tab in tabs"
-            :key="tab.id"
             class="tab"
-            :class="{ active: activeTab === tab.id }"
+            :class="{ active: viewer.active === BUILD_TAB }"
             role="tab"
-            :aria-selected="activeTab === tab.id"
-            @click="activeTab = tab.id"
+            :aria-selected="viewer.active === BUILD_TAB"
+            @click="viewer.showBuild()"
           >
-            {{ tab.title }}
+            Сборка
           </button>
+          <div
+            v-for="tab in viewer.tabs"
+            :key="tab.path"
+            class="tab file"
+            :class="[
+              git.statusOf(tab.path) ?? 'clean',
+              { active: viewer.active === tab.path, preview: tab.preview },
+            ]"
+            role="tab"
+            :aria-selected="viewer.active === tab.path"
+            :title="tab.preview ? tab.path + '\nДвойной клик — закрепить вкладку' : tab.path"
+            @click="viewer.active = tab.path"
+            @dblclick="viewer.pin(tab.path)"
+            @auxclick.middle="closeTab(tab.path)"
+          >
+            <span class="tab-name">{{ tab.name }}</span>
+            <button
+              class="tab-close"
+              title="Закрыть"
+              aria-label="Закрыть вкладку"
+              @click.stop="closeTab(tab.path)"
+            >
+              <X :size="12" />
+            </button>
+          </div>
         </div>
         <div class="tab-content">
-          <ConsolePanel v-show="activeTab === 'build'" />
+          <ConsolePanel v-show="viewer.active === BUILD_TAB" />
+          <FileViewer v-if="viewer.activeFile" :tab="viewer.activeFile" />
         </div>
       </main>
     </div>
@@ -327,6 +355,58 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--text-dim);
   font-size: 12px;
+}
+.tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  flex: none;
+  white-space: nowrap;
+}
+.tab.file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+  border-left: 1px solid var(--border);
+}
+.tab.preview .tab-name {
+  font-style: italic;
+}
+.tab.modified .tab-name {
+  color: var(--git-modified);
+}
+.tab.added .tab-name,
+.tab.untracked .tab-name {
+  color: var(--git-added);
+}
+.tab.conflict .tab-name {
+  color: var(--git-conflict);
+}
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  opacity: 0;
+}
+.tab.file:hover .tab-close,
+.tab.file.active .tab-close {
+  opacity: 1;
+}
+.tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
 }
 .tab:hover {
   color: var(--text);

@@ -20,6 +20,15 @@ export interface FileEntry {
   isDir: boolean;
 }
 
+export interface FileContent {
+  path: string;
+  /** Empty for binary files. */
+  content: string;
+  size: number;
+  truncated: boolean;
+  binary: boolean;
+}
+
 export type GitStatusKind = 'modified' | 'added' | 'untracked' | 'deleted' | 'conflict';
 
 export interface GitFileStatus {

@@ -177,3 +177,63 @@ button {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Syntax colours for the file viewer (highlight.js classes), Darcula-like. */
+.hljs-comment,
+.hljs-quote {
+  color: #7a7e85;
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-built_in,
+.hljs-doctag {
+  color: #cf8e6d;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #6aab73;
+}
+.hljs-number {
+  color: #2aacb8;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: #56a8f5;
+}
+.hljs-title.class_,
+.hljs-type {
+  color: #bcbec4;
+}
+.hljs-meta,
+.hljs-annotation {
+  color: #b3ae60;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property {
+  color: #c77dbb;
+}
+.hljs-tag,
+.hljs-name {
+  color: #d5b778;
+}
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: #56a8f5;
+}
+.hljs-deletion {
+  color: #f75464;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}

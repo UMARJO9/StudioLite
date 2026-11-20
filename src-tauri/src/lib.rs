@@ -14,6 +14,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fs::open_project,
             fs::read_dir,
+            fs::read_file,
             fs::open_in_system,
             fs::reveal_in_file_manager,
             git::git_branch,

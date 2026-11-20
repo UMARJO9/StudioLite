@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::commands::git;
-use crate::config::HIDDEN_DIRS;
+use crate::config::{HIDDEN_DIRS, MAX_VIEW_BYTES};
 use crate::error::{AppError, AppResult};
 
 /// Canonical project directory; every command resolves its `project` argument through this.
@@ -98,6 +98,47 @@ pub async fn read_dir(project: String, path: String) -> AppResult<Vec<FileEntry>
             .then_with(|| a.name.cmp(&b.name))
     });
     Ok(entries)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileContent {
+    pub path: String,
+    /// Empty for binary files.
+    pub content: String,
+    pub size: u64,
+    /// Only the first `MAX_VIEW_BYTES` were read.
+    pub truncated: bool,
+    pub binary: bool,
+}
+
+/// Text of a project file for the read-only viewer.
+#[tauri::command]
+pub async fn read_file(project: String, path: String) -> AppResult<FileContent> {
+    use std::io::Read;
+
+    let target = path_in_project(&project, &path)?;
+    if !target.is_file() {
+        return Err(AppError::InvalidPath(path));
+    }
+    let size = target.metadata()?.len();
+    let mut bytes = Vec::new();
+    std::fs::File::open(&target)?
+        .take(MAX_VIEW_BYTES)
+        .read_to_end(&mut bytes)?;
+    // Same heuristic git uses: a NUL byte near the start means "not text".
+    let binary = bytes.iter().take(8000).any(|b| *b == 0);
+    Ok(FileContent {
+        path: target.to_string_lossy().into_owned(),
+        content: if binary {
+            String::new()
+        } else {
+            String::from_utf8_lossy(&bytes).into_owned()
+        },
+        size,
+        truncated: size > MAX_VIEW_BYTES,
+        binary,
+    })
 }
 
 /// Opens a file with the default application.

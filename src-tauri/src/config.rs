@@ -24,6 +24,8 @@ pub const EMULATOR_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// How long a task gets to exit after SIGTERM before SIGKILL.
 pub const KILL_GRACE: Duration = Duration::from_secs(3);
 pub const GIT_LOG_MAX_LIMIT: u32 = 5000;
+/// The file viewer shows at most this much of a file.
+pub const MAX_VIEW_BYTES: u64 = 2 * 1024 * 1024;
 /// Folder in the project root where packaged APK/AAB files are collected, one subfolder per variant.
 pub const ARTIFACTS_DIR: &str = "dist";
 

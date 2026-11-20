@@ -76,27 +76,15 @@ const sidebarCollapsed = ref(false);
 // Each sidebar section folds down to its header on its own.
 const treeCollapsed = ref(false);
 const graphCollapsed = ref(false);
+const chatsCollapsed = ref(false);
+const chatsHeight = ref(180);
+const SECTION_MIN = 80;
 const graphHeight = ref(280);
 const sidebarEl = ref<HTMLElement | null>(null);
 let sizeAtDragStart = 0;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
-}
-
-// Chats panel on the right.
-const CHAT_PANEL_MIN = 200;
-const chatPanelWidth = ref(280);
-const chatPanelCollapsed = ref(false);
-function toggleChatPanel() {
-  chatPanelCollapsed.value = !chatPanelCollapsed.value;
-  saveSetting('chatPanelCollapsed', chatPanelCollapsed.value);
-}
-function startChatPanelDrag() {
-  sizeAtDragStart = chatPanelWidth.value;
-}
-function dragChatPanel(delta: number) {
-  chatPanelWidth.value = clamp(sizeAtDragStart - delta, CHAT_PANEL_MIN, window.innerWidth - 400);
 }
 
 function toggleSidebar() {
@@ -111,12 +99,36 @@ function toggleGraph() {
   graphCollapsed.value = !graphCollapsed.value;
   saveSetting('graphCollapsed', graphCollapsed.value);
 }
-/** The graph keeps its dragged height only while the tree above it is open too. */
-const graphPaneStyle = computed(() => {
-  if (graphCollapsed.value) return { flex: 'none' };
-  if (treeCollapsed.value) return { flex: '1' };
-  return { flex: 'none', height: graphHeight.value + 'px' };
+function toggleChats() {
+  chatsCollapsed.value = !chatsCollapsed.value;
+  saveSetting('chatsCollapsed', chatsCollapsed.value);
+}
+
+// Sidebar sections from top to bottom: files, chats, git. The topmost open one takes the
+// free space; the ones below it keep the height they were dragged to.
+type Section = 'tree' | 'chats' | 'graph';
+const growingSection = computed<Section | null>(() => {
+  if (!treeCollapsed.value) return 'tree';
+  if (!chatsCollapsed.value) return 'chats';
+  if (!graphCollapsed.value) return 'graph';
+  return null;
 });
+function sectionStyle(section: Section, collapsed: boolean, height: number) {
+  if (collapsed) return { flex: 'none' };
+  if (growingSection.value === section) return { flex: '1' };
+  return { flex: 'none', height: height + 'px' };
+}
+/** A section can be resized only when it is open and something above it takes the rest. */
+const chatsResizable = computed(() => !chatsCollapsed.value && growingSection.value !== 'chats');
+const graphResizable = computed(() => !graphCollapsed.value && growingSection.value !== 'graph');
+
+function startChatsDrag() {
+  sizeAtDragStart = chatsHeight.value;
+}
+function dragChats(delta: number) {
+  const available = sidebarEl.value?.clientHeight ?? window.innerHeight;
+  chatsHeight.value = clamp(sizeAtDragStart - delta, SECTION_MIN, available - 160);
+}
 
 /** Cmd+B on macOS, Ctrl+B elsewhere — same as in VS Code. */
 function onKeydown(e: KeyboardEvent) {
@@ -148,12 +160,12 @@ function closeTab(path: string) {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  const [chatWidth, chatCollapsed] = await Promise.all([
-    loadSetting('chatPanelWidth'),
-    loadSetting('chatPanelCollapsed'),
+  const [savedChatsHeight, chatsFolded] = await Promise.all([
+    loadSetting('chatsHeight'),
+    loadSetting('chatsCollapsed'),
   ]);
-  if (chatWidth) chatPanelWidth.value = clamp(chatWidth, CHAT_PANEL_MIN, window.innerWidth - 400);
-  chatPanelCollapsed.value = chatCollapsed === true;
+  if (savedChatsHeight) chatsHeight.value = Math.max(SECTION_MIN, savedChatsHeight);
+  chatsCollapsed.value = chatsFolded === true;
   const [width, height, collapsed, treeFolded, graphFolded] = await Promise.all([
     loadSetting('sidebarWidth'),
     loadSetting('graphHeight'),
@@ -210,11 +222,25 @@ onBeforeUnmount(() => {
         class="sidebar"
         :style="{ width: sidebarWidth + 'px' }"
       >
-        <section class="pane" :style="{ flex: treeCollapsed ? 'none' : '1' }">
+        <section class="pane" :style="sectionStyle('tree', treeCollapsed, 0)">
           <FileTree :collapsed="treeCollapsed" @refresh="refreshProjectData" @toggle="toggleTree" />
         </section>
         <Splitter
-          v-show="!treeCollapsed && !graphCollapsed"
+          v-show="chatsResizable"
+          direction="horizontal"
+          @start="startChatsDrag"
+          @drag="dragChats"
+          @end="saveSetting('chatsHeight', chatsHeight)"
+        />
+        <section
+          class="pane"
+          :class="{ 'no-splitter': !chatsResizable }"
+          :style="sectionStyle('chats', chatsCollapsed, chatsHeight)"
+        >
+          <ChatList :collapsed="chatsCollapsed" @toggle="toggleChats" />
+        </section>
+        <Splitter
+          v-show="graphResizable"
           direction="horizontal"
           @start="startGraphDrag"
           @drag="dragGraph"
@@ -222,8 +248,8 @@ onBeforeUnmount(() => {
         />
         <section
           class="pane"
-          :class="{ 'no-splitter': treeCollapsed || graphCollapsed }"
-          :style="graphPaneStyle"
+          :class="{ 'no-splitter': !graphResizable }"
+          :style="sectionStyle('graph', graphCollapsed, graphHeight)"
         >
           <GitGraph :collapsed="graphCollapsed" @refresh="git.refresh()" @toggle="toggleGraph" />
         </section>
@@ -315,30 +341,6 @@ onBeforeUnmount(() => {
           <ChatView v-if="chats.activeChat" :chat="chats.activeChat" />
         </div>
       </main>
-      <Splitter
-        v-show="!chatPanelCollapsed"
-        direction="vertical"
-        @start="startChatPanelDrag"
-        @drag="dragChatPanel"
-        @end="saveSetting('chatPanelWidth', chatPanelWidth)"
-      />
-      <aside
-        v-show="!chatPanelCollapsed"
-        class="sidebar"
-        :style="{ width: chatPanelWidth + 'px' }"
-      >
-        <ChatList />
-      </aside>
-      <button
-        class="sidebar-handle right"
-        :style="{ right: chatPanelCollapsed ? '0px' : chatPanelWidth + 'px' }"
-        :title="chatPanelCollapsed ? 'Показать панель чатов' : 'Скрыть панель чатов'"
-        :aria-expanded="!chatPanelCollapsed"
-        @click="toggleChatPanel"
-      >
-        <ChevronLeft v-if="chatPanelCollapsed" :size="14" />
-        <ChevronRight v-else :size="14" />
-      </button>
     </div>
 
     <ToastHost />
@@ -390,11 +392,6 @@ onBeforeUnmount(() => {
   border-radius: 0 6px 6px 0;
   color: var(--text-dim);
   opacity: 0.75;
-}
-.sidebar-handle.right {
-  border-right: none;
-  border-left: 1px solid var(--border-strong);
-  border-radius: 6px 0 0 6px;
 }
 .tab-icon {
   flex: none;

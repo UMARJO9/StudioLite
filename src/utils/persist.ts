@@ -21,8 +21,8 @@ export interface Settings {
   chatCommand: string;
   /** Models offered in the chat's model picker; the list lives only in local settings. */
   chatModels: ChatModel[];
-  chatPanelWidth: number;
-  chatPanelCollapsed: boolean;
+  chatsHeight: number;
+  chatsCollapsed: boolean;
   graphHeight: number;
 }
 

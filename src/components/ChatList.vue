@@ -1,10 +1,21 @@
 <script setup lang="ts">
-// Right-hand panel: the project's chats and the one setting they need.
+// Sidebar section: the project's chats and the settings they need.
 import { ref, watch } from 'vue';
-import { LoaderCircle, MessageSquare, Plus, Settings, X } from 'lucide-vue-next';
+import {
+  ChevronDown,
+  ChevronRight,
+  LoaderCircle,
+  MessageSquare,
+  Plus,
+  Settings,
+  X,
+} from 'lucide-vue-next';
 import { chatTabId, useChatsStore } from '../stores/chats';
 import { useViewerStore } from '../stores/viewer';
 import { formatRelative } from '../utils/time';
+
+defineProps<{ collapsed: boolean }>();
+const emit = defineEmits<{ toggle: [] }>();
 
 const chats = useChatsStore();
 const viewer = useViewerStore();
@@ -46,28 +57,40 @@ async function saveCommand() {
 </script>
 
 <template>
-  <div class="chat-list">
-    <div class="panel-header">
+  <div class="chat-list" :class="{ collapsed }">
+    <div
+      class="panel-header toggle"
+      :title="collapsed ? 'Развернуть раздел' : 'Свернуть раздел'"
+      @click="emit('toggle')"
+    >
+      <button class="btn small icon" :aria-expanded="!collapsed" aria-label="Свернуть или развернуть раздел">
+        <ChevronRight v-if="collapsed" :size="14" />
+        <ChevronDown v-else :size="14" />
+      </button>
       <span>Чаты</span>
+      <span v-if="chats.sorted.length" class="count">{{ chats.sorted.length }}</span>
       <span class="spacer" />
-      <button
-        class="btn small icon"
-        :class="{ on: showSettings }"
-        title="Программа чата"
-        @click="showSettings = !showSettings"
-      >
-        <Settings :size="13" />
-      </button>
-      <button
-        class="btn small icon"
-        title="Новый чат"
-        :disabled="!chats.isConfigured"
-        @click="chats.create()"
-      >
-        <Plus :size="15" />
-      </button>
+      <template v-if="!collapsed">
+        <button
+          class="btn small icon"
+          :class="{ on: showSettings }"
+          title="Программа чата и модели"
+          @click.stop="showSettings = !showSettings"
+        >
+          <Settings :size="13" />
+        </button>
+        <button
+          class="btn small icon"
+          title="Новый чат"
+          :disabled="!chats.isConfigured"
+          @click.stop="chats.create()"
+        >
+          <Plus :size="15" />
+        </button>
+      </template>
     </div>
 
+    <div v-show="!collapsed" class="chat-body">
     <form v-if="showSettings || !chats.isConfigured" class="setup" @submit.prevent="saveCommand">
       <label for="chat-command">Программа чата</label>
       <p class="hint">
@@ -137,6 +160,7 @@ async function saveCommand() {
         </button>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -146,6 +170,20 @@ async function saveCommand() {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+.chat-list.collapsed {
+  height: auto;
+}
+.chat-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.count {
+  font-weight: 400;
+  letter-spacing: 0;
 }
 .btn.on {
   background: var(--bg-active);
@@ -226,8 +264,10 @@ async function saveCommand() {
 }
 .list {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+}
+.list .empty {
+  height: auto;
+  padding: 14px;
 }
 .item {
   display: flex;

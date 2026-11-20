@@ -123,6 +123,13 @@ button {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.panel-header.toggle {
+  padding-left: 2px;
+  gap: 2px;
+}
+.panel-header.toggle:hover {
+  color: var(--text);
+}
 .panel-header .spacer {
   flex: 1;
 }

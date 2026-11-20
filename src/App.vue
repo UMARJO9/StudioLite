@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ChevronLeft, ChevronRight, FolderOpen, TriangleAlert } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
@@ -57,6 +57,9 @@ const SIDEBAR_MIN = 180;
 const GRAPH_MIN = 80;
 const sidebarWidth = ref(320);
 const sidebarCollapsed = ref(false);
+// Each sidebar section folds down to its header on its own.
+const treeCollapsed = ref(false);
+const graphCollapsed = ref(false);
 const graphHeight = ref(280);
 const sidebarEl = ref<HTMLElement | null>(null);
 let sizeAtDragStart = 0;
@@ -69,6 +72,21 @@ function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
   saveSetting('sidebarCollapsed', sidebarCollapsed.value);
 }
+function toggleTree() {
+  treeCollapsed.value = !treeCollapsed.value;
+  saveSetting('treeCollapsed', treeCollapsed.value);
+}
+function toggleGraph() {
+  graphCollapsed.value = !graphCollapsed.value;
+  saveSetting('graphCollapsed', graphCollapsed.value);
+}
+/** The graph keeps its dragged height only while the tree above it is open too. */
+const graphPaneStyle = computed(() => {
+  if (graphCollapsed.value) return { flex: 'none' };
+  if (treeCollapsed.value) return { flex: '1' };
+  return { flex: 'none', height: graphHeight.value + 'px' };
+});
+
 /** Cmd+B on macOS, Ctrl+B elsewhere — same as in VS Code. */
 function onKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyB') {
@@ -99,12 +117,16 @@ const activeTab = ref<TabId>('build');
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  const [width, height, collapsed] = await Promise.all([
+  const [width, height, collapsed, treeFolded, graphFolded] = await Promise.all([
     loadSetting('sidebarWidth'),
     loadSetting('graphHeight'),
     loadSetting('sidebarCollapsed'),
+    loadSetting('treeCollapsed'),
+    loadSetting('graphCollapsed'),
   ]);
   sidebarCollapsed.value = collapsed === true;
+  treeCollapsed.value = treeFolded === true;
+  graphCollapsed.value = graphFolded === true;
   if (width) sidebarWidth.value = clamp(width, SIDEBAR_MIN, window.innerWidth - 300);
   if (height) graphHeight.value = Math.max(GRAPH_MIN, height);
   try {
@@ -151,17 +173,22 @@ onBeforeUnmount(() => {
         class="sidebar"
         :style="{ width: sidebarWidth + 'px' }"
       >
-        <section class="pane tree-pane">
-          <FileTree @refresh="refreshProjectData" />
+        <section class="pane" :style="{ flex: treeCollapsed ? 'none' : '1' }">
+          <FileTree :collapsed="treeCollapsed" @refresh="refreshProjectData" @toggle="toggleTree" />
         </section>
         <Splitter
+          v-show="!treeCollapsed && !graphCollapsed"
           direction="horizontal"
           @start="startGraphDrag"
           @drag="dragGraph"
           @end="saveSetting('graphHeight', graphHeight)"
         />
-        <section class="pane" :style="{ height: graphHeight + 'px', flex: 'none' }">
-          <GitGraph @refresh="git.refresh()" />
+        <section
+          class="pane"
+          :class="{ 'no-splitter': treeCollapsed || graphCollapsed }"
+          :style="graphPaneStyle"
+        >
+          <GitGraph :collapsed="graphCollapsed" @refresh="git.refresh()" @toggle="toggleGraph" />
         </section>
       </aside>
       <Splitter
@@ -277,8 +304,8 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 }
-.tree-pane {
-  flex: 1;
+.pane.no-splitter {
+  border-top: 1px solid var(--border);
 }
 .center {
   display: flex;

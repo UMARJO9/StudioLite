@@ -20,7 +20,8 @@ import { useTreeStore, type TreeRow } from '../stores/tree';
 import ContextMenu, { type MenuItem } from './ContextMenu.vue';
 import VirtualList from './VirtualList.vue';
 
-const emit = defineEmits<{ refresh: [] }>();
+defineProps<{ collapsed: boolean }>();
+const emit = defineEmits<{ refresh: []; toggle: [] }>();
 
 const project = useProjectStore();
 const tree = useTreeStore();
@@ -83,18 +84,28 @@ function onContextMenu(e: MouseEvent, entry: FileEntry) {
 </script>
 
 <template>
-  <div class="file-tree">
-    <div class="panel-header">
+  <div class="file-tree" :class="{ collapsed }">
+    <div
+      class="panel-header toggle"
+      :title="collapsed ? 'Развернуть раздел' : 'Свернуть раздел'"
+      @click="emit('toggle')"
+    >
+      <button class="btn small icon" :aria-expanded="!collapsed" aria-label="Свернуть или развернуть раздел">
+        <ChevronRight v-if="collapsed" :size="14" />
+        <ChevronDown v-else :size="14" />
+      </button>
       <span class="ellipsis">Проект</span>
       <span class="spacer" />
-      <button class="btn small icon" title="Свернуть всё" @click="tree.collapseAll()">
-        <ChevronsDownUp :size="14" />
-      </button>
-      <button class="btn small icon" title="Обновить" @click="emit('refresh')">
-        <RefreshCw :size="13" :class="{ spin: tree.loading }" />
-      </button>
+      <template v-if="!collapsed">
+        <button class="btn small icon" title="Свернуть все папки" @click.stop="tree.collapseAll()">
+          <ChevronsDownUp :size="14" />
+        </button>
+        <button class="btn small icon" title="Обновить" @click.stop="emit('refresh')">
+          <RefreshCw :size="13" :class="{ spin: tree.loading }" />
+        </button>
+      </template>
     </div>
-    <div class="tree-body">
+    <div v-show="!collapsed" class="tree-body">
       <div v-if="!tree.rows.length" class="empty">
         {{ tree.loading ? 'Загрузка…' : 'Папка пуста' }}
       </div>
@@ -140,6 +151,9 @@ function onContextMenu(e: MouseEvent, entry: FileEntry) {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+.file-tree.collapsed {
+  height: auto;
 }
 .tree-body {
   flex: 1;

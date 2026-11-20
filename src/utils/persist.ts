@@ -8,6 +8,8 @@ export interface Settings {
   lastAction: 'build' | 'run';
   sidebarWidth: number;
   sidebarCollapsed: boolean;
+  treeCollapsed: boolean;
+  graphCollapsed: boolean;
   graphHeight: number;
 }
 

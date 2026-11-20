@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { GitBranch, RefreshCw, Tag } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, GitBranch, RefreshCw, Tag } from 'lucide-vue-next';
 import type { Commit } from '../api';
 import { useGitStore } from '../stores/git';
 import { useProjectStore } from '../stores/project';
@@ -9,7 +9,8 @@ import { parseRefs, type RefBadge } from '../utils/gitRefs';
 import { formatDateTime, formatRelative } from '../utils/time';
 import VirtualList from './VirtualList.vue';
 
-const emit = defineEmits<{ refresh: [] }>();
+defineProps<{ collapsed: boolean }>();
+const emit = defineEmits<{ refresh: []; toggle: [] }>();
 
 const git = useGitStore();
 const project = useProjectStore();
@@ -94,16 +95,29 @@ const emptyText = computed(() => {
 </script>
 
 <template>
-  <div class="git-graph">
-    <div class="panel-header">
+  <div class="git-graph" :class="{ collapsed }">
+    <div
+      class="panel-header toggle"
+      :title="collapsed ? 'Развернуть раздел' : 'Свернуть раздел'"
+      @click="emit('toggle')"
+    >
+      <button class="btn small icon" :aria-expanded="!collapsed" aria-label="Свернуть или развернуть раздел">
+        <ChevronRight v-if="collapsed" :size="14" />
+        <ChevronDown v-else :size="14" />
+      </button>
       <span>Git</span>
       <span v-if="rows.length" class="count">{{ rows.length }}{{ git.hasMore ? '+' : '' }}</span>
       <span class="spacer" />
-      <button class="btn small icon" title="Обновить" @click="emit('refresh')">
+      <button
+        v-if="!collapsed"
+        class="btn small icon"
+        title="Обновить"
+        @click.stop="emit('refresh')"
+      >
         <RefreshCw :size="13" :class="{ spin: git.logLoading }" />
       </button>
     </div>
-    <div class="graph-body">
+    <div v-show="!collapsed" class="graph-body">
       <div v-if="!rows.length" class="empty">{{ emptyText }}</div>
       <VirtualList
         v-else
@@ -172,6 +186,9 @@ const emptyText = computed(() => {
   height: 100%;
   min-height: 0;
   container-type: inline-size;
+}
+.git-graph.collapsed {
+  height: auto;
 }
 .count {
   font-weight: 400;

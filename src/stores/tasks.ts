@@ -49,7 +49,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const elapsedMs = ref(0);
   const last = ref<FinishedTask | null>(null);
   /** What the main button does; remembered between sessions. */
-  const lastAction = ref<MainAction>('build');
+  const lastAction = ref<MainAction>('run');
 
   const isRunning = computed(() => running.value !== null);
 

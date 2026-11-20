@@ -11,10 +11,17 @@ import { useProjectStore } from './project';
 import { useToastsStore } from './toasts';
 import { useTreeStore } from './tree';
 
-export type TaskKind = 'build' | 'run';
+export type TaskKind = 'build' | 'run' | 'clean' | 'stopDaemon';
+/** The kinds the main split button can be set to. */
+export type MainAction = 'build' | 'run';
 export type TaskOutcome = 'success' | 'failed' | 'cancelled' | 'error';
 
-export const TASK_TITLE: Record<TaskKind, string> = { build: 'Build', run: 'Run' };
+export const TASK_TITLE: Record<TaskKind, string> = {
+  build: 'Build',
+  run: 'Run',
+  clean: 'Clean',
+  stopDaemon: 'Stop Gradle',
+};
 
 export interface FinishedTask {
   kind: TaskKind;
@@ -34,7 +41,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const elapsedMs = ref(0);
   const last = ref<FinishedTask | null>(null);
   /** What the main button does; remembered between sessions. */
-  const lastAction = ref<TaskKind>('build');
+  const lastAction = ref<MainAction>('build');
 
   const isRunning = computed(() => running.value !== null);
 
@@ -64,7 +71,7 @@ export const useTasksStore = defineStore('tasks', () => {
     else stage.value = event.label;
   }
 
-  function setAction(kind: TaskKind) {
+  function setAction(kind: MainAction) {
     lastAction.value = kind;
     saveSetting('lastAction', kind);
   }
@@ -84,7 +91,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const target = kind === 'run' ? runTarget() : null;
     if (!path || (kind === 'run' && !target)) return;
 
-    setAction(kind);
+    if (kind === 'build' || kind === 'run') setAction(kind);
     const startedAt = Date.now();
     running.value = { kind, startedAt };
     stage.value = '';
@@ -98,10 +105,11 @@ export const useTasksStore = defineStore('tasks', () => {
     const title = TASK_TITLE[kind];
     let finished: FinishedTask;
     try {
-      const result: TaskResult =
-        kind === 'run' && target
-          ? await api.runProject(path, target, onEvent)
-          : await api.buildProject(path, onEvent);
+      let result: TaskResult;
+      if (kind === 'run' && target) result = await api.runProject(path, target, onEvent);
+      else if (kind === 'clean') result = await api.cleanProject(path, onEvent);
+      else if (kind === 'stopDaemon') result = await api.stopGradleDaemons(path, onEvent);
+      else result = await api.buildProject(path, onEvent);
       const outcome: TaskOutcome = result.cancelled
         ? 'cancelled'
         : result.success

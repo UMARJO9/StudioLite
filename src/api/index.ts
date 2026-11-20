@@ -49,5 +49,9 @@ export const api = {
     onEvent: (e: TaskEvent) => void,
     config?: BuildConfig,
   ) => invoke<TaskResult>('run_project', { project, target, config, onEvent: channel(onEvent) }),
+  cleanProject: (project: string, onEvent: (e: TaskEvent) => void) =>
+    invoke<TaskResult>('clean_project', { project, onEvent: channel(onEvent) }),
+  stopGradleDaemons: (project: string, onEvent: (e: TaskEvent) => void) =>
+    invoke<TaskResult>('stop_gradle_daemons', { project, onEvent: channel(onEvent) }),
   stopTask: () => invoke<boolean>('stop_task'),
 };

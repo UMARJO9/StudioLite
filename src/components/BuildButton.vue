@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue';
-import { Check, ChevronDown, Hammer, Play, Square } from 'lucide-vue-next';
-import { TASK_TITLE, useTasksStore, type TaskKind } from '../stores/tasks';
+import { Check, ChevronDown, Eraser, Hammer, Play, Power, Square } from 'lucide-vue-next';
+import { TASK_TITLE, useTasksStore, type MainAction, type TaskKind } from '../stores/tasks';
 
 const tasks = useTasksStore();
 
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 
-const ACTIONS: { kind: TaskKind; icon: Component; hint: string }[] = [
+const ACTIONS: { kind: MainAction; icon: Component; hint: string }[] = [
   { kind: 'build', icon: Hammer, hint: 'Собрать debug APK' },
   { kind: 'run', icon: Play, hint: 'Установить и запустить на устройстве' },
 ];
@@ -70,6 +70,26 @@ onBeforeUnmount(() => listen(false));
       @click="tasks.stop()"
     >
       <Square :size="14" />
+    </button>
+
+    <button
+      class="btn icon"
+      :disabled="!!tasks.blockedReason('clean')"
+      :title="tasks.blockedReason('clean') ?? 'Clean — удалить папки build (gradlew clean)'"
+      @click="start('clean')"
+    >
+      <Eraser :size="15" />
+    </button>
+    <button
+      class="btn icon"
+      :disabled="!!tasks.blockedReason('stopDaemon')"
+      :title="
+        tasks.blockedReason('stopDaemon') ??
+        'Остановить Gradle daemon и освободить память (gradlew --stop)'
+      "
+      @click="start('stopDaemon')"
+    >
+      <Power :size="15" />
     </button>
 
     <div v-if="open" class="menu" role="menu">

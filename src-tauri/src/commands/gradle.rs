@@ -105,7 +105,7 @@ fn fallback_java_home() -> Option<PathBuf> {
 fn gradle_command(
     project: &Path,
     sdk: Option<&Sdk>,
-    task: &str,
+    args: &[&str],
     out: &TaskOutput,
 ) -> AppResult<Command> {
     let gradlew = gradlew_path(project);
@@ -122,7 +122,7 @@ fn gradle_command(
     #[cfg(windows)]
     let mut cmd = command(&gradlew);
 
-    cmd.current_dir(project).arg(task).arg("--console=plain");
+    cmd.current_dir(project).args(args).arg("--console=plain");
 
     if let Some(java_home) = fallback_java_home() {
         out.info(format!(
@@ -135,7 +135,7 @@ fn gradle_command(
         && std::env::var_os("ANDROID_HOME").is_none_or(|v| v.is_empty()) {
             cmd.env("ANDROID_HOME", &sdk.root);
         }
-    out.info(format!("> gradlew {task} --console=plain"));
+    out.info(format!("> gradlew {} --console=plain", args.join(" ")));
     Ok(cmd)
 }
 
@@ -157,7 +157,7 @@ async fn build_steps(
     let task = config.task("assemble");
     out.stage(task.clone());
     let sdk = sdk::locate(Some(project)).ok();
-    let cmd = gradle_command(project, sdk.as_ref(), &task, out)?;
+    let cmd = gradle_command(project, sdk.as_ref(), &[&task], out)?;
     Ok(exit_code(run_streaming(cmd, "gradlew", handle, out).await?))
 }
 
@@ -179,6 +179,54 @@ pub async fn build_project(
     drop(out);
     let _ = forwarder.await;
     finish(result, started, None)
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance: clean, stop daemons
+// ---------------------------------------------------------------------------
+
+/// Runs one fixed Gradle invocation as a task, with the same streaming and Stop as a build.
+async fn run_gradle_task(
+    project: String,
+    args: &[&str],
+    stage: &str,
+    on_event: Channel<TaskEvent>,
+    state: &TaskState,
+) -> AppResult<TaskResult> {
+    let project = project_dir(&project)?;
+    let guard = state.begin()?;
+    let started = Instant::now();
+    let (out, forwarder) = TaskOutput::start(on_event);
+    let result = async {
+        out.stage(stage);
+        let sdk = sdk::locate(Some(&project)).ok();
+        let cmd = gradle_command(&project, sdk.as_ref(), args, &out)?;
+        Ok(exit_code(run_streaming(cmd, "gradlew", &guard.handle, &out).await?))
+    }
+    .await;
+    drop(out);
+    let _ = forwarder.await;
+    finish(result, started, None)
+}
+
+/// `gradlew clean`: deletes the build directories of every module.
+#[tauri::command]
+pub async fn clean_project(
+    project: String,
+    on_event: Channel<TaskEvent>,
+    state: tauri::State<'_, TaskState>,
+) -> AppResult<TaskResult> {
+    run_gradle_task(project, &["clean"], "clean", on_event, &state).await
+}
+
+/// `gradlew --stop`: stops the Gradle daemons of this Gradle version, freeing their memory.
+#[tauri::command]
+pub async fn stop_gradle_daemons(
+    project: String,
+    on_event: Channel<TaskEvent>,
+    state: tauri::State<'_, TaskState>,
+) -> AppResult<TaskResult> {
+    run_gradle_task(project, &["--stop"], "остановка Gradle daemon", on_event, &state).await
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +347,7 @@ async fn run_steps(
 
     let task = config.task("install");
     out.stage(task.clone());
-    let mut cmd = gradle_command(project, Some(&sdk), &task, out)?;
+    let mut cmd = gradle_command(project, Some(&sdk), &[&task], out)?;
     cmd.env("ANDROID_SERIAL", &serial);
     let code = exit_code(run_streaming(cmd, "gradlew", handle, out).await?);
     if code != 0 {

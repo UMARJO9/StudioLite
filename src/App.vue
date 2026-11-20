@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { FolderOpen, TriangleAlert } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, FolderOpen, TriangleAlert } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
 import ConsolePanel from './components/ConsolePanel.vue';
 import FileTree from './components/FileTree.vue';
@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app">
-    <AppToolbar :sidebar-collapsed="sidebarCollapsed" @toggle-sidebar="toggleSidebar" />
+    <AppToolbar />
 
     <div v-if="project.problems.length" class="banner">
       <TriangleAlert :size="14" />
@@ -171,6 +171,21 @@ onBeforeUnmount(() => {
         @drag="dragSidebar"
         @end="saveSetting('sidebarWidth', sidebarWidth)"
       />
+      <!-- Sits on the sidebar's edge at mid-height, so it is a short reach from anywhere. -->
+      <button
+        class="sidebar-handle"
+        :style="{ left: sidebarCollapsed ? '0px' : sidebarWidth + 'px' }"
+        :title="
+          sidebarCollapsed
+            ? 'Показать боковую панель (⌘B / Ctrl+B)'
+            : 'Скрыть боковую панель (⌘B / Ctrl+B)'
+        "
+        :aria-expanded="!sidebarCollapsed"
+        @click="toggleSidebar"
+      >
+        <ChevronRight v-if="sidebarCollapsed" :size="14" />
+        <ChevronLeft v-else :size="14" />
+      </button>
       <main class="center">
         <div class="tabs" role="tablist">
           <button
@@ -218,9 +233,36 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 .body {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
+}
+.sidebar-handle {
+  position: absolute;
+  top: 50%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 56px;
+  padding: 0;
+  transform: translateY(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+.sidebar-handle:hover,
+.sidebar-handle:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  opacity: 1;
+  outline: none;
 }
 .sidebar {
   display: flex;

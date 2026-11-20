@@ -56,12 +56,25 @@ let unlistenFocus: (() => void) | null = null;
 const SIDEBAR_MIN = 180;
 const GRAPH_MIN = 80;
 const sidebarWidth = ref(320);
+const sidebarCollapsed = ref(false);
 const graphHeight = ref(280);
 const sidebarEl = ref<HTMLElement | null>(null);
 let sizeAtDragStart = 0;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  saveSetting('sidebarCollapsed', sidebarCollapsed.value);
+}
+/** Cmd+B on macOS, Ctrl+B elsewhere — same as in VS Code. */
+function onKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyB') {
+    e.preventDefault();
+    toggleSidebar();
+  }
 }
 
 function startSidebarDrag() {
@@ -85,10 +98,13 @@ type TabId = (typeof tabs)[number]['id'];
 const activeTab = ref<TabId>('build');
 
 onMounted(async () => {
-  const [width, height] = await Promise.all([
+  window.addEventListener('keydown', onKeydown);
+  const [width, height, collapsed] = await Promise.all([
     loadSetting('sidebarWidth'),
     loadSetting('graphHeight'),
+    loadSetting('sidebarCollapsed'),
   ]);
+  sidebarCollapsed.value = collapsed === true;
   if (width) sidebarWidth.value = clamp(width, SIDEBAR_MIN, window.innerWidth - 300);
   if (height) graphHeight.value = Math.max(GRAPH_MIN, height);
   try {
@@ -104,12 +120,15 @@ onMounted(async () => {
   if (!project.info) void devices.refresh();
 });
 
-onBeforeUnmount(() => unlistenFocus?.());
+onBeforeUnmount(() => {
+  unlistenFocus?.();
+  window.removeEventListener('keydown', onKeydown);
+});
 </script>
 
 <template>
   <div class="app">
-    <AppToolbar />
+    <AppToolbar :sidebar-collapsed="sidebarCollapsed" @toggle-sidebar="toggleSidebar" />
 
     <div v-if="project.problems.length" class="banner">
       <TriangleAlert :size="14" />
@@ -126,7 +145,12 @@ onBeforeUnmount(() => unlistenFocus?.());
     </div>
 
     <div v-else class="body">
-      <aside ref="sidebarEl" class="sidebar" :style="{ width: sidebarWidth + 'px' }">
+      <aside
+        v-show="!sidebarCollapsed"
+        ref="sidebarEl"
+        class="sidebar"
+        :style="{ width: sidebarWidth + 'px' }"
+      >
         <section class="pane tree-pane">
           <FileTree @refresh="refreshProjectData" />
         </section>
@@ -141,6 +165,7 @@ onBeforeUnmount(() => unlistenFocus?.());
         </section>
       </aside>
       <Splitter
+        v-show="!sidebarCollapsed"
         direction="vertical"
         @start="startSidebarDrag"
         @drag="dragSidebar"

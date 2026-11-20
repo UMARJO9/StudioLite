@@ -7,6 +7,7 @@ export interface Settings {
   selectedDevice: { id: string; avd: string | null } | null;
   lastAction: 'build' | 'run';
   sidebarWidth: number;
+  sidebarCollapsed: boolean;
   graphHeight: number;
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FolderOpen, GitBranch } from 'lucide-vue-next';
+import { FolderOpen, GitBranch, PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next';
 import { useGitStore } from '../stores/git';
 import BuildButton from './BuildButton.vue';
 import DeviceSelector from './DeviceSelector.vue';
@@ -7,12 +7,27 @@ import PackageButton from './PackageButton.vue';
 import TaskStatus from './TaskStatus.vue';
 import { useProjectStore } from '../stores/project';
 
+defineProps<{ sidebarCollapsed: boolean }>();
+const emit = defineEmits<{ toggleSidebar: [] }>();
+
 const project = useProjectStore();
 const git = useGitStore();
 </script>
 
 <template>
   <header class="toolbar">
+    <button
+      class="btn icon"
+      :disabled="!project.info"
+      :title="
+        sidebarCollapsed ? 'Показать боковую панель (⌘B / Ctrl+B)' : 'Скрыть боковую панель (⌘B / Ctrl+B)'
+      "
+      :aria-pressed="!sidebarCollapsed"
+      @click="emit('toggleSidebar')"
+    >
+      <PanelLeftOpen v-if="sidebarCollapsed" :size="16" />
+      <PanelLeftClose v-else :size="16" />
+    </button>
     <button
       class="btn"
       :disabled="project.opening"

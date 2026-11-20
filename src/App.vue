@@ -11,12 +11,10 @@ import {
   X,
 } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
-import ChatList from './components/ChatList.vue';
 import ChatView from './components/ChatView.vue';
 import ConsolePanel from './components/ConsolePanel.vue';
 import FileViewer from './components/FileViewer.vue';
-import FileTree from './components/FileTree.vue';
-import GitGraph from './components/GitGraph.vue';
+import SidebarSections from './components/SidebarSections.vue';
 import Splitter from './components/Splitter.vue';
 import ToastHost from './components/ToastHost.vue';
 import { chatTabId, useChatsStore } from './stores/chats';
@@ -71,17 +69,8 @@ let unlistenFocus: (() => void) | null = null;
 
 // --- resizable panels -------------------------------------------------------
 const SIDEBAR_MIN = 180;
-const GRAPH_MIN = 80;
 const sidebarWidth = ref(320);
 const sidebarCollapsed = ref(false);
-// Each sidebar section folds down to its header on its own.
-const treeCollapsed = ref(false);
-const graphCollapsed = ref(false);
-const chatsCollapsed = ref(false);
-const chatsHeight = ref(180);
-const SECTION_MIN = 80;
-const graphHeight = ref(280);
-const sidebarEl = ref<HTMLElement | null>(null);
 let sizeAtDragStart = 0;
 
 function clamp(value: number, min: number, max: number) {
@@ -92,45 +81,6 @@ function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
   saveSetting('sidebarCollapsed', sidebarCollapsed.value);
 }
-function toggleTree() {
-  treeCollapsed.value = !treeCollapsed.value;
-  saveSetting('treeCollapsed', treeCollapsed.value);
-}
-function toggleGraph() {
-  graphCollapsed.value = !graphCollapsed.value;
-  saveSetting('graphCollapsed', graphCollapsed.value);
-}
-function toggleChats() {
-  chatsCollapsed.value = !chatsCollapsed.value;
-  saveSetting('chatsCollapsed', chatsCollapsed.value);
-}
-
-// Sidebar sections from top to bottom: files, chats, git. The topmost open one takes the
-// free space; the ones below it keep the height they were dragged to.
-type Section = 'tree' | 'chats' | 'graph';
-const growingSection = computed<Section | null>(() => {
-  if (!treeCollapsed.value) return 'tree';
-  if (!chatsCollapsed.value) return 'chats';
-  if (!graphCollapsed.value) return 'graph';
-  return null;
-});
-function sectionStyle(section: Section, collapsed: boolean, height: number) {
-  if (collapsed) return { flex: 'none' };
-  if (growingSection.value === section) return { flex: '1' };
-  return { flex: 'none', height: height + 'px' };
-}
-/** A section can be resized only when it is open and something above it takes the rest. */
-const chatsResizable = computed(() => !chatsCollapsed.value && growingSection.value !== 'chats');
-const graphResizable = computed(() => !graphCollapsed.value && growingSection.value !== 'graph');
-
-function startChatsDrag() {
-  sizeAtDragStart = chatsHeight.value;
-}
-function dragChats(delta: number) {
-  const available = sidebarEl.value?.clientHeight ?? window.innerHeight;
-  chatsHeight.value = clamp(sizeAtDragStart - delta, SECTION_MIN, available - 160);
-}
-
 /** Cmd+B on macOS, Ctrl+B elsewhere — same as in VS Code. */
 function onKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyB') {
@@ -145,14 +95,6 @@ function startSidebarDrag() {
 function dragSidebar(delta: number) {
   sidebarWidth.value = clamp(sizeAtDragStart + delta, SIDEBAR_MIN, window.innerWidth - 300);
 }
-function startGraphDrag() {
-  sizeAtDragStart = graphHeight.value;
-}
-function dragGraph(delta: number) {
-  const available = sidebarEl.value?.clientHeight ?? window.innerHeight;
-  graphHeight.value = clamp(sizeAtDragStart - delta, GRAPH_MIN, available - 100);
-}
-
 // --- center tabs ------------------------------------------------------------
 // The build console plus one tab per file open in the viewer; logcat will be added here.
 function closeTab(path: string) {
@@ -171,24 +113,12 @@ watch([openTabIds, () => viewer.active], ([ids, active]) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  const [savedChatsHeight, chatsFolded] = await Promise.all([
-    loadSetting('chatsHeight'),
-    loadSetting('chatsCollapsed'),
-  ]);
-  if (savedChatsHeight) chatsHeight.value = Math.max(SECTION_MIN, savedChatsHeight);
-  chatsCollapsed.value = chatsFolded === true;
-  const [width, height, collapsed, treeFolded, graphFolded] = await Promise.all([
+  const [width, collapsed] = await Promise.all([
     loadSetting('sidebarWidth'),
-    loadSetting('graphHeight'),
     loadSetting('sidebarCollapsed'),
-    loadSetting('treeCollapsed'),
-    loadSetting('graphCollapsed'),
   ]);
-  sidebarCollapsed.value = collapsed === true;
-  treeCollapsed.value = treeFolded === true;
-  graphCollapsed.value = graphFolded === true;
   if (width) sidebarWidth.value = clamp(width, SIDEBAR_MIN, window.innerWidth - 300);
-  if (height) graphHeight.value = Math.max(GRAPH_MIN, height);
+  sidebarCollapsed.value = collapsed === true;
   try {
     unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) onWindowFocus();
@@ -227,43 +157,8 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else class="body">
-      <aside
-        v-show="!sidebarCollapsed"
-        ref="sidebarEl"
-        class="sidebar"
-        :style="{ width: sidebarWidth + 'px' }"
-      >
-        <section class="pane" :style="sectionStyle('tree', treeCollapsed, 0)">
-          <FileTree :collapsed="treeCollapsed" @refresh="refreshProjectData" @toggle="toggleTree" />
-        </section>
-        <Splitter
-          v-show="chatsResizable"
-          direction="horizontal"
-          @start="startChatsDrag"
-          @drag="dragChats"
-          @end="saveSetting('chatsHeight', chatsHeight)"
-        />
-        <section
-          class="pane"
-          :class="{ 'no-splitter': !chatsResizable }"
-          :style="sectionStyle('chats', chatsCollapsed, chatsHeight)"
-        >
-          <ChatList :collapsed="chatsCollapsed" @toggle="toggleChats" />
-        </section>
-        <Splitter
-          v-show="graphResizable"
-          direction="horizontal"
-          @start="startGraphDrag"
-          @drag="dragGraph"
-          @end="saveSetting('graphHeight', graphHeight)"
-        />
-        <section
-          class="pane"
-          :class="{ 'no-splitter': !graphResizable }"
-          :style="sectionStyle('graph', graphCollapsed, graphHeight)"
-        >
-          <GitGraph :collapsed="graphCollapsed" @refresh="git.refresh()" @toggle="toggleGraph" />
-        </section>
+      <aside v-show="!sidebarCollapsed" class="sidebar" :style="{ width: sidebarWidth + 'px' }">
+        <SidebarSections @refresh="refreshProjectData" />
       </aside>
       <Splitter
         v-show="!sidebarCollapsed"

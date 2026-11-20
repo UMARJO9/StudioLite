@@ -9,6 +9,8 @@ export interface ChatModel {
   hint: string;
 }
 
+export type SidebarSection = 'tree' | 'chats' | 'graph';
+
 export interface Settings {
   lastProject: string | null;
   selectedDevice: { id: string; avd: string | null } | null;
@@ -24,6 +26,9 @@ export interface Settings {
   chatsHeight: number;
   chatsCollapsed: boolean;
   graphHeight: number;
+  treeHeight: number;
+  /** Sidebar sections from top to bottom. */
+  sidebarOrder: SidebarSection[];
 }
 
 export async function loadSetting<K extends keyof Settings>(key: K): Promise<Settings[K] | undefined> {

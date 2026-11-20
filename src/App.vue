@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { FolderOpen, TriangleAlert } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
 import FileTree from './components/FileTree.vue';
+import GitGraph from './components/GitGraph.vue';
 import Splitter from './components/Splitter.vue';
 import ToastHost from './components/ToastHost.vue';
 import { useGitStore } from './stores/git';
@@ -125,7 +126,7 @@ onBeforeUnmount(() => unlistenFocus?.());
           @end="saveSetting('graphHeight', graphHeight)"
         />
         <section class="pane" :style="{ height: graphHeight + 'px', flex: 'none' }">
-          <div class="panel-header">Git</div>
+          <GitGraph @refresh="git.refresh()" />
         </section>
       </aside>
       <Splitter

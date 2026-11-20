@@ -8,8 +8,10 @@ const props = withDefaults(
     rowHeight: number;
     overscan?: number;
     keyOf?: (item: T, index: number) => string | number;
+    /** Rows take the list's width (and can ellipsize) instead of scrolling horizontally. */
+    fit?: boolean;
   }>(),
-  { overscan: 8, keyOf: undefined },
+  { overscan: 8, keyOf: undefined, fit: false },
 );
 
 const emit = defineEmits<{ scroll: [atBottom: boolean] }>();
@@ -74,6 +76,7 @@ defineExpose({ scrollToBottom, scrollToTop, isAtBottom });
   <div ref="el" class="vlist" @scroll.passive="onScroll">
     <div
       class="vlist-inner"
+      :class="{ fit }"
       :style="{ height: items.length * rowHeight + 'px', paddingTop: start * rowHeight + 'px' }"
     >
       <div
@@ -100,6 +103,9 @@ defineExpose({ scrollToBottom, scrollToTop, isAtBottom });
   /* Grows with the widest visible row so long lines scroll horizontally. */
   width: max-content;
   min-width: 100%;
+}
+.vlist-inner.fit {
+  width: 100%;
 }
 .vlist-row {
   overflow: hidden;

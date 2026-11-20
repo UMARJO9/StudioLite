@@ -12,7 +12,7 @@ use crate::commands::process::{
     TaskEvent, TaskHandle, TaskOutput, TaskState, command, run_capture, run_streaming,
 };
 use crate::commands::sdk::{self, Sdk};
-use crate::config::BuildConfig;
+use crate::config::{ARTIFACTS_DIR, BuildConfig};
 use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Deserialize)]
@@ -33,6 +33,8 @@ pub struct TaskResult {
     pub duration_ms: u64,
     /// Device the app was deployed to (Run only).
     pub serial: Option<String>,
+    /// Folder the APK/AAB files were copied to (packaging only).
+    pub output_dir: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +232,154 @@ pub async fn stop_gradle_daemons(
 }
 
 // ---------------------------------------------------------------------------
+// Packaging: build distributable files and collect them in one folder
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PackageVariant {
+    /// Debug APK.
+    Debug,
+    /// Release APK and AAB.
+    Release,
+}
+
+impl PackageVariant {
+    fn name(self) -> &'static str {
+        match self {
+            PackageVariant::Debug => "debug",
+            PackageVariant::Release => "release",
+        }
+    }
+}
+
+fn files_with_extension(dir: &Path, extension: &str) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == extension))
+        .collect();
+    files.sort();
+    files
+}
+
+/// `versionName` from the APK metadata, reduced to characters that are safe in a file name.
+fn version_name(project: &Path, config: &BuildConfig) -> Option<String> {
+    let text = std::fs::read_to_string(project.join(config.output_metadata_path())).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let version = json.get("elements")?.get(0)?.get("versionName")?.as_str()?;
+    let safe: String = version
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' })
+        .collect();
+    (!safe.is_empty()).then_some(safe)
+}
+
+/// Copies the built APK/AAB files to `<project>/dist/<variant>`, replacing what was there.
+/// A single file gets a readable name (`MyApp-1.2-release.apk`); split APKs keep theirs.
+fn collect_artifacts(project: &Path, config: &BuildConfig, out: &TaskOutput) -> AppResult<PathBuf> {
+    let outputs = project.join(config.outputs_dir());
+    let sources = [
+        ("apk", files_with_extension(&outputs.join("apk").join(&config.variant), "apk")),
+        ("aab", files_with_extension(&outputs.join("bundle").join(&config.variant), "aab")),
+    ];
+    if sources.iter().all(|(_, files)| files.is_empty()) {
+        return Err(AppError::Gradle(format!(
+            "сборка прошла, но в {} нет ни APK, ни AAB",
+            outputs.display()
+        )));
+    }
+
+    let dest = project.join(ARTIFACTS_DIR).join(&config.variant);
+    std::fs::create_dir_all(&dest)?;
+    for extension in ["apk", "aab"] {
+        for stale in files_with_extension(&dest, extension) {
+            std::fs::remove_file(stale)?;
+        }
+    }
+
+    let project_name = project
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "app".into());
+    let base_name = match version_name(project, config) {
+        Some(version) => format!("{project_name}-{version}-{}", config.variant),
+        None => format!("{project_name}-{}", config.variant),
+    };
+
+    for (extension, files) in sources {
+        for source in &files {
+            let name = if files.len() == 1 {
+                format!("{base_name}.{extension}")
+            } else {
+                source.file_name().unwrap_or_default().to_string_lossy().into_owned()
+            };
+            let target = dest.join(&name);
+            let bytes = std::fs::copy(source, &target)?;
+            out.info(format!(
+                "{} ({:.1} МБ)",
+                target.display(),
+                bytes as f64 / (1024.0 * 1024.0)
+            ));
+        }
+    }
+    Ok(dest)
+}
+
+async fn package_steps(
+    project: &Path,
+    variant: PackageVariant,
+    handle: &TaskHandle,
+    out: &TaskOutput,
+    output_dir: &mut Option<PathBuf>,
+) -> AppResult<i32> {
+    let config = BuildConfig {
+        variant: variant.name().into(),
+        ..BuildConfig::default()
+    };
+    let mut tasks = vec![config.task("assemble")];
+    if variant == PackageVariant::Release {
+        tasks.push(config.task("bundle"));
+    }
+    out.stage(tasks.join(" "));
+    let sdk = sdk::locate(Some(project)).ok();
+    let args: Vec<&str> = tasks.iter().map(String::as_str).collect();
+    let cmd = gradle_command(project, sdk.as_ref(), &args, out)?;
+    let code = exit_code(run_streaming(cmd, "gradlew", handle, out).await?);
+    if code != 0 {
+        return Ok(code);
+    }
+
+    out.stage("копирование файлов");
+    out.info("Готовые файлы:");
+    *output_dir = Some(collect_artifacts(project, &config, out)?);
+    Ok(0)
+}
+
+/// Builds a debug APK, or a release APK plus AAB, and collects the files in `dist/<variant>`.
+#[tauri::command]
+pub async fn package_project(
+    project: String,
+    variant: PackageVariant,
+    on_event: Channel<TaskEvent>,
+    state: tauri::State<'_, TaskState>,
+) -> AppResult<TaskResult> {
+    let project = project_dir(&project)?;
+    let guard = state.begin()?;
+    let started = Instant::now();
+    let (out, forwarder) = TaskOutput::start(on_event);
+    let mut output_dir = None;
+    let result = package_steps(&project, variant, &guard.handle, &out, &mut output_dir).await;
+    drop(out);
+    let _ = forwarder.await;
+    let mut result = finish(result, started, None)?;
+    result.output_dir = output_dir.map(|dir| dir.to_string_lossy().into_owned());
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
@@ -395,6 +545,7 @@ fn finish(result: AppResult<i32>, started: Instant, serial: Option<String>) -> A
             exit_code: Some(code),
             duration_ms,
             serial,
+            output_dir: None,
         }),
         Err(AppError::Cancelled) => Ok(TaskResult {
             success: false,
@@ -402,6 +553,7 @@ fn finish(result: AppResult<i32>, started: Instant, serial: Option<String>) -> A
             exit_code: None,
             duration_ms,
             serial,
+            output_dir: None,
         }),
         Err(e) => Err(e),
     }
@@ -461,6 +613,14 @@ if [ -f fail.flag ]; then
   echo "FAILURE: Build failed with an exception."
   exit 3
 fi
+case "$*" in
+  *assembleRelease*)
+    mkdir -p app/build/outputs/apk/release app/build/outputs/bundle/release
+    echo apk > app/build/outputs/apk/release/app-release-unsigned.apk
+    echo '{"applicationId":"com.example","elements":[{"versionName":"1.2 beta"}]}' > app/build/outputs/apk/release/output-metadata.json
+    case "$*" in *bundleRelease*) echo aab > app/build/outputs/bundle/release/app-release.aab ;; esac
+    ;;
+esac
 echo "BUILD SUCCESSFUL in 1s"
 "#;
 
@@ -515,6 +675,50 @@ echo "BUILD SUCCESSFUL in 1s"
             assert!(log.contains("BUILD SUCCESSFUL"), "{log}");
             // The slot is free again once the task is over.
             assert!(state.begin().is_ok());
+        }
+
+        #[tokio::test]
+        async fn release_package_collects_apk_and_aab_in_dist() {
+            let project = fake_project("package", &[]);
+            let stale = project.join("dist").join("release");
+            std::fs::create_dir_all(&stale).unwrap();
+            std::fs::write(stale.join("old.apk"), "old").unwrap();
+
+            let (channel, events) = recording_channel();
+            let state = TaskState::default();
+            let guard = state.begin().unwrap();
+            let (out, forwarder) = TaskOutput::start(channel);
+            let mut output_dir = None;
+            let code = package_steps(
+                &project,
+                PackageVariant::Release,
+                &guard.handle,
+                &out,
+                &mut output_dir,
+            )
+            .await
+            .unwrap();
+            drop(out);
+            forwarder.await.unwrap();
+
+            assert_eq!(code, 0);
+            let log = events.lock().unwrap().join("\n");
+            assert!(log.contains(":app:assembleRelease :app:bundleRelease --console=plain"), "{log}");
+            let dir = output_dir.unwrap();
+            assert_eq!(dir, project.join("dist").join("release"));
+            let mut names: Vec<String> = std::fs::read_dir(&dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            let project_name = project.file_name().unwrap().to_string_lossy();
+            assert_eq!(
+                names,
+                vec![
+                    format!("{project_name}-1.2_beta-release.aab"),
+                    format!("{project_name}-1.2_beta-release.apk"),
+                ]
+            );
         }
 
         #[tokio::test]

@@ -11,7 +11,13 @@ import { useProjectStore } from './project';
 import { useToastsStore } from './toasts';
 import { useTreeStore } from './tree';
 
-export type TaskKind = 'build' | 'run' | 'clean' | 'stopDaemon';
+export type TaskKind =
+  | 'build'
+  | 'run'
+  | 'clean'
+  | 'stopDaemon'
+  | 'packageDebug'
+  | 'packageRelease';
 /** The kinds the main split button can be set to. */
 export type MainAction = 'build' | 'run';
 export type TaskOutcome = 'success' | 'failed' | 'cancelled' | 'error';
@@ -21,6 +27,8 @@ export const TASK_TITLE: Record<TaskKind, string> = {
   run: 'Run',
   clean: 'Clean',
   stopDaemon: 'Stop Gradle',
+  packageDebug: 'Debug APK',
+  packageRelease: 'Release APK + AAB',
 };
 
 export interface FinishedTask {
@@ -107,6 +115,9 @@ export const useTasksStore = defineStore('tasks', () => {
     try {
       let result: TaskResult;
       if (kind === 'run' && target) result = await api.runProject(path, target, onEvent);
+      else if (kind === 'packageDebug') result = await api.packageProject(path, 'debug', onEvent);
+      else if (kind === 'packageRelease')
+        result = await api.packageProject(path, 'release', onEvent);
       else if (kind === 'clean') result = await api.cleanProject(path, onEvent);
       else if (kind === 'stopDaemon') result = await api.stopGradleDaemons(path, onEvent);
       else result = await api.buildProject(path, onEvent);
@@ -119,6 +130,11 @@ export const useTasksStore = defineStore('tasks', () => {
       const time = formatDuration(result.durationMs);
       if (outcome === 'success') {
         output.note(`${title}: успешно за ${time}`, 'success');
+        if (result.outputDir) {
+          toasts.success(`Файлы собраны в ${result.outputDir}`);
+          // Show the folder so the files don't have to be hunted down.
+          api.revealInFileManager(path, result.outputDir).catch((e) => toasts.error(e));
+        }
       } else if (outcome === 'cancelled') {
         output.note(`${title}: остановлено через ${time}`, 'warning');
       } else {

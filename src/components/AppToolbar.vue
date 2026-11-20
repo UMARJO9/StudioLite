@@ -3,6 +3,7 @@ import { FolderOpen, GitBranch } from 'lucide-vue-next';
 import { useGitStore } from '../stores/git';
 import BuildButton from './BuildButton.vue';
 import DeviceSelector from './DeviceSelector.vue';
+import PackageButton from './PackageButton.vue';
 import TaskStatus from './TaskStatus.vue';
 import { useProjectStore } from '../stores/project';
 
@@ -31,6 +32,7 @@ const git = useGitStore();
     <div class="divider" />
     <DeviceSelector />
     <BuildButton />
+    <PackageButton />
     <div class="divider" />
     <TaskStatus class="task-status" />
   </header>

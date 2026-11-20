@@ -24,6 +24,8 @@ pub const EMULATOR_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// How long a task gets to exit after SIGTERM before SIGKILL.
 pub const KILL_GRACE: Duration = Duration::from_secs(3);
 pub const GIT_LOG_MAX_LIMIT: u32 = 5000;
+/// Folder in the project root where packaged APK/AAB files are collected, one subfolder per variant.
+pub const ARTIFACTS_DIR: &str = "dist";
 
 /// Which Gradle module and variant Build/Run operate on.
 /// There is no UI for it yet; the frontend sends nothing and gets the defaults.
@@ -71,14 +73,18 @@ impl BuildConfig {
         format!(":{}:{}{}", self.module.trim_matches(':'), action, variant)
     }
 
-    /// `app/build/outputs/apk/debug/output-metadata.json`, relative to the project root.
-    pub fn output_metadata_path(&self) -> std::path::PathBuf {
+    /// `app/build/outputs`, relative to the project root.
+    pub fn outputs_dir(&self) -> std::path::PathBuf {
         let mut p = std::path::PathBuf::new();
         for part in self.module.split(':').filter(|s| !s.is_empty()) {
             p.push(part);
         }
-        p.join("build")
-            .join("outputs")
+        p.join("build").join("outputs")
+    }
+
+    /// `app/build/outputs/apk/debug/output-metadata.json`, relative to the project root.
+    pub fn output_metadata_path(&self) -> std::path::PathBuf {
+        self.outputs_dir()
             .join("apk")
             .join(&self.variant)
             .join("output-metadata.json")

@@ -89,4 +89,8 @@ export interface TaskResult {
   exitCode: number | null;
   durationMs: number;
   serial: string | null;
+  /** Folder with the collected APK/AAB files (packaging only). */
+  outputDir: string | null;
 }
+
+export type PackageVariant = 'debug' | 'release';

@@ -7,6 +7,7 @@ import type {
   Device,
   FileEntry,
   GitFileStatus,
+  PackageVariant,
   ProjectInfo,
   RunTarget,
   SdkInfo,
@@ -49,6 +50,9 @@ export const api = {
     onEvent: (e: TaskEvent) => void,
     config?: BuildConfig,
   ) => invoke<TaskResult>('run_project', { project, target, config, onEvent: channel(onEvent) }),
+  /** Builds a debug APK, or a release APK + AAB, and collects the files in `dist/<variant>`. */
+  packageProject: (project: string, variant: PackageVariant, onEvent: (e: TaskEvent) => void) =>
+    invoke<TaskResult>('package_project', { project, variant, onEvent: channel(onEvent) }),
   cleanProject: (project: string, onEvent: (e: TaskEvent) => void) =>
     invoke<TaskResult>('clean_project', { project, onEvent: channel(onEvent) }),
   stopGradleDaemons: (project: string, onEvent: (e: TaskEvent) => void) =>

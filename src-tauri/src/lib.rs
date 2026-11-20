@@ -24,6 +24,7 @@ pub fn run() {
             android::start_avd,
             gradle::build_project,
             gradle::run_project,
+            gradle::package_project,
             gradle::clean_project,
             gradle::stop_gradle_daemons,
             process::stop_task,

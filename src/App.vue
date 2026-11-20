@@ -1,13 +1,47 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { FolderOpen, TriangleAlert } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
+import FileTree from './components/FileTree.vue';
 import Splitter from './components/Splitter.vue';
 import ToastHost from './components/ToastHost.vue';
+import { useGitStore } from './stores/git';
 import { useProjectStore } from './stores/project';
+import { useToastsStore } from './stores/toasts';
+import { useTreeStore } from './stores/tree';
 import { loadSetting, saveSetting } from './utils/persist';
 
 const project = useProjectStore();
+const tree = useTreeStore();
+const git = useGitStore();
+const toasts = useToastsStore();
+
+// --- data refresh -----------------------------------------------------------
+// No timers: data is reloaded when a project opens, when the window regains focus,
+// after a task finishes and on the refresh buttons.
+async function refreshProjectData() {
+  await Promise.all([tree.refresh(), git.refresh()]);
+}
+
+watch(
+  () => project.path,
+  () => {
+    tree.reset();
+    git.reset();
+    void refreshProjectData();
+  },
+);
+
+const FOCUS_REFRESH_MIN_INTERVAL_MS = 2000;
+let lastFocusRefresh = 0;
+function onWindowFocus() {
+  const now = Date.now();
+  if (now - lastFocusRefresh < FOCUS_REFRESH_MIN_INTERVAL_MS) return;
+  lastFocusRefresh = now;
+  void refreshProjectData();
+}
+let unlistenFocus: (() => void) | null = null;
 
 // --- resizable panels -------------------------------------------------------
 const SIDEBAR_MIN = 180;
@@ -48,8 +82,17 @@ onMounted(async () => {
   ]);
   if (width) sidebarWidth.value = clamp(width, SIDEBAR_MIN, window.innerWidth - 300);
   if (height) graphHeight.value = Math.max(GRAPH_MIN, height);
+  try {
+    unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) onWindowFocus();
+    });
+  } catch (e) {
+    toasts.error(e, 'Подписка на фокус окна');
+  }
   await project.restore();
 });
+
+onBeforeUnmount(() => unlistenFocus?.());
 </script>
 
 <template>
@@ -73,7 +116,7 @@ onMounted(async () => {
     <div v-else class="body">
       <aside ref="sidebarEl" class="sidebar" :style="{ width: sidebarWidth + 'px' }">
         <section class="pane tree-pane">
-          <div class="panel-header">Проект</div>
+          <FileTree @refresh="refreshProjectData" />
         </section>
         <Splitter
           direction="horizontal"

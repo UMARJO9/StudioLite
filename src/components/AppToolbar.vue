@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { FolderOpen } from 'lucide-vue-next';
+import { FolderOpen, GitBranch } from 'lucide-vue-next';
+import { useGitStore } from '../stores/git';
 import { useProjectStore } from '../stores/project';
 
 const project = useProjectStore();
+const git = useGitStore();
 </script>
 
 <template>
@@ -18,6 +20,10 @@ const project = useProjectStore();
     </button>
     <span v-if="project.info" class="project-name ellipsis" :title="project.info.path">
       {{ project.info.name }}
+    </span>
+    <span v-if="git.branch" class="branch" title="Текущая ветка">
+      <GitBranch :size="14" />
+      <span class="ellipsis">{{ git.branch }}</span>
     </span>
     <div class="spacer" />
   </header>
@@ -38,6 +44,18 @@ const project = useProjectStore();
   max-width: 220px;
   color: var(--text-bright);
   font-weight: 600;
+}
+.branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 240px;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 12px;
 }
 .spacer {
   flex: 1;

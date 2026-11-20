@@ -323,14 +323,13 @@ pub async fn boot_avd(
             Some(dev) => event(BootStage::Booting, Some(&dev.serial)),
             None => {
                 // No device yet: if the launcher has already died, there never will be one.
-                if let Some(Ok(Some(status))) = child.as_mut().map(|c| c.try_wait()) {
-                    if !status.success() {
+                if let Some(Ok(Some(status))) = child.as_mut().map(|c| c.try_wait())
+                    && !status.success() {
                         break Err(AppError::Emulator(format!(
                             "процесс эмулятора «{avd}» завершился ({status}). \
                              Проверьте AVD в Device Manager"
                         )));
                     }
-                }
                 event(BootStage::WaitingForDevice, None);
             }
         }

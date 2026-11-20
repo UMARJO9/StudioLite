@@ -261,11 +261,10 @@ pub async fn run_streaming(
             if let Some(pid) = pid {
                 terminate_tree(pid).await;
             }
-            if tokio::time::timeout(KILL_GRACE, child.wait()).await.is_err() {
-                if let Some(pid) = pid {
+            if tokio::time::timeout(KILL_GRACE, child.wait()).await.is_err()
+                && let Some(pid) = pid {
                     kill_tree(pid).await;
                 }
-            }
             child.wait().await
         }
     };
@@ -296,13 +295,12 @@ async fn kill_tree(pid: u32) {
 #[cfg(unix)]
 fn signal_group(pid: u32, signal: libc::c_int) {
     // The task was spawned with process_group(0), so its pgid equals its pid.
-    if let Ok(pgid) = libc::pid_t::try_from(pid) {
-        if pgid > 1 {
+    if let Ok(pgid) = libc::pid_t::try_from(pid)
+        && pgid > 1 {
             unsafe {
                 libc::kill(-pgid, signal);
             }
         }
-    }
 }
 
 #[cfg(windows)]

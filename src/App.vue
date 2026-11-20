@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { FolderOpen, TriangleAlert } from 'lucide-vue-next';
 import AppToolbar from './components/AppToolbar.vue';
+import ConsolePanel from './components/ConsolePanel.vue';
 import FileTree from './components/FileTree.vue';
 import GitGraph from './components/GitGraph.vue';
 import Splitter from './components/Splitter.vue';
@@ -10,6 +11,7 @@ import ToastHost from './components/ToastHost.vue';
 import { useDevicesStore } from './stores/devices';
 import { useGitStore } from './stores/git';
 import { useProjectStore } from './stores/project';
+import { useTasksStore } from './stores/tasks';
 import { useToastsStore } from './stores/toasts';
 import { useTreeStore } from './stores/tree';
 import { loadSetting, saveSetting } from './utils/persist';
@@ -19,6 +21,7 @@ const tree = useTreeStore();
 const git = useGitStore();
 const toasts = useToastsStore();
 const devices = useDevicesStore();
+const tasks = useTasksStore();
 
 // --- data refresh -----------------------------------------------------------
 // No timers: data is reloaded when a project opens, when the window regains focus,
@@ -95,7 +98,7 @@ onMounted(async () => {
   } catch (e) {
     toasts.error(e, 'Подписка на фокус окна');
   }
-  await devices.restore();
+  await Promise.all([devices.restore(), tasks.restore()]);
   await project.restore();
   // Opening a project refreshes devices itself; cover the "no project yet" start.
   if (!project.info) void devices.refresh();
@@ -157,7 +160,9 @@ onBeforeUnmount(() => unlistenFocus?.());
             {{ tab.title }}
           </button>
         </div>
-        <div class="tab-content" />
+        <div class="tab-content">
+          <ConsolePanel v-show="activeTab === 'build'" />
+        </div>
       </main>
     </div>
 
